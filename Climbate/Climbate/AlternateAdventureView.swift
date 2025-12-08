@@ -1,8 +1,8 @@
 //
 //  AlternateAdventureView.swift
-//  ClimbIt
+//  CLIMB.it
 //
-//  Created by David Levy on 3/13/25.
+//  Find alternative crags when your spot is wet
 //
 
 import SwiftUI
@@ -13,103 +13,191 @@ struct AlternateAdventureView: View {
     @State private var isLoading = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Header
-                VStack(spacing: 10) {
-                    Image(systemName: "sun.max.fill")
-                        .font(.system(size: 50))
-                        .foregroundColor(.yellow)
+        ZStack {
+            Color.climbChalk.ignoresSafeArea()
 
-                    Text("Find Dry Rock")
-                        .font(.title)
-                        .fontWeight(.bold)
+            ScrollView {
+                VStack(spacing: ClimbSpacing.lg) {
+                    // Header
+                    headerSection
 
-                    Text("Here are some crags with safe climbing conditions")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-
-                // Safe crags list
-                if isLoading {
-                    ProgressView("Finding safe crags...")
-                        .padding()
-                } else if safeCrags.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "cloud.rain")
-                            .font(.system(size: 40))
-                            .foregroundColor(.secondary)
-                        Text("No safe crags found nearby")
-                            .foregroundColor(.secondary)
-                        Text("Check back later or expand your search area")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    // Content
+                    if isLoading {
+                        loadingState
+                    } else if safeCrags.isEmpty {
+                        emptyState
+                    } else {
+                        cragsList
                     }
-                    .padding()
-                } else {
-                    LazyVStack(spacing: 12) {
-                        ForEach(safeCrags) { crag in
-                            NavigationLink(destination: CragDetailView(crag: crag)) {
-                                SafeCragCard(crag: crag)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal)
                 }
+                .padding(.horizontal, ClimbSpacing.md)
+                .padding(.bottom, ClimbSpacing.xxl)
             }
         }
-        .navigationTitle("Alternate Adventure")
+        .navigationTitle("Alternatives")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadSafeCrags()
         }
     }
 
+    // MARK: - Header
+
+    private var headerSection: some View {
+        VStack(spacing: ClimbSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(Color.climbSafe.opacity(0.15))
+                    .frame(width: 100, height: 100)
+
+                Circle()
+                    .fill(Color.climbSafe)
+                    .frame(width: 72, height: 72)
+
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white)
+            }
+
+            VStack(spacing: ClimbSpacing.xs) {
+                Text("Find Dry Rock")
+                    .font(ClimbTypography.title2)
+                    .foregroundColor(.climbGranite)
+
+                Text("Crags with safe climbing conditions")
+                    .font(ClimbTypography.body)
+                    .foregroundColor(.climbStone)
+            }
+        }
+        .padding(.vertical, ClimbSpacing.lg)
+    }
+
+    // MARK: - Loading State
+
+    private var loadingState: some View {
+        VStack(spacing: ClimbSpacing.md) {
+            ProgressView()
+                .tint(.climbRope)
+
+            Text("Finding safe crags...")
+                .font(ClimbTypography.caption)
+                .foregroundColor(.climbStone)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, ClimbSpacing.xxl)
+    }
+
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        VStack(spacing: ClimbSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(Color.climbMist)
+                    .frame(width: 80, height: 80)
+
+                Image(systemName: "cloud.rain.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(.climbStone)
+            }
+
+            Text("No Safe Crags Found")
+                .font(ClimbTypography.title3)
+                .foregroundColor(.climbGranite)
+
+            Text("Looks like it's been wet everywhere.\nCheck back after a few dry days!")
+                .font(ClimbTypography.body)
+                .foregroundColor(.climbStone)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, ClimbSpacing.xxl)
+    }
+
+    // MARK: - Crags List
+
+    private var cragsList: some View {
+        VStack(spacing: ClimbSpacing.sm) {
+            HStack {
+                Text("\(safeCrags.count) safe crags")
+                    .font(ClimbTypography.captionBold)
+                    .foregroundColor(.climbStone)
+                Spacer()
+            }
+
+            LazyVStack(spacing: ClimbSpacing.sm) {
+                ForEach(safeCrags) { crag in
+                    NavigationLink(destination: CragDetailView(crag: crag)) {
+                        SafeCragCard(crag: crag)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Load Safe Crags
+
     private func loadSafeCrags() async {
         isLoading = true
-
-        // Fetch all crags and filter for safe ones
         let allCrags = await cragStore.fetchAllCrags()
         safeCrags = allCrags.filter { $0.safetyStatus == .safe }
-
         isLoading = false
     }
 }
+
+// MARK: - Safe Crag Card
 
 struct SafeCragCard: View {
     let crag: Crag
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: ClimbSpacing.md) {
+            // Safe indicator
+            ZStack {
+                Circle()
+                    .fill(Color.climbSafe.opacity(0.15))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.climbSafe)
+            }
+
+            // Content
+            VStack(alignment: .leading, spacing: ClimbSpacing.xs) {
                 Text(crag.name)
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                    .font(ClimbTypography.bodyBold)
+                    .foregroundColor(.climbGranite)
+                    .lineLimit(1)
 
                 Text(crag.location)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(ClimbTypography.caption)
+                    .foregroundColor(.climbStone)
                     .lineLimit(1)
 
                 if let precip = crag.precipitation, let days = precip.daysSinceRain {
-                    Text("\(days) days since rain")
-                        .font(.caption2)
-                        .foregroundColor(.green)
+                    HStack(spacing: 4) {
+                        Image(systemName: "sun.max.fill")
+                            .font(.caption2)
+                            .foregroundColor(.climbSafe)
+                        Text("\(days) days dry")
+                            .font(ClimbTypography.micro)
+                            .foregroundColor(.climbSafe)
+                    }
                 }
             }
 
             Spacer()
 
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-                .font(.title2)
+            // Arrow
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.climbStone)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
+        .padding(ClimbSpacing.md)
+        .background(Color.white)
+        .cornerRadius(ClimbRadius.medium)
+        .climbSubtleShadow()
     }
 }
 

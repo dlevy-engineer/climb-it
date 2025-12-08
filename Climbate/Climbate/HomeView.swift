@@ -1,8 +1,8 @@
 //
 //  HomeView.swift
-//  ClimbIt
+//  CLIMB.it
 //
-//  Created by David Levy on 3/13/25.
+//  Main dashboard showing saved crags with weather status
 //
 
 import SwiftUI
@@ -13,23 +13,27 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                // Background
+                Color.climbChalk
+                    .ignoresSafeArea()
+
                 if cragStore.savedCrags.isEmpty {
                     emptyState
                 } else {
-                    cragList
+                    cragDashboard
                 }
             }
-            .navigationTitle("My Crags")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    ClimbLogo(size: .small)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingSearchView.toggle() }) {
-                        Image(systemName: "plus")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if !cragStore.savedCrags.isEmpty {
-                        EditButton()
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.climbRope)
                     }
                 }
             }
@@ -39,42 +43,228 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Empty State
+
     private var emptyState: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "mountain.2")
-                .font(.system(size: 60))
-                .foregroundColor(.secondary)
+        VStack(spacing: ClimbSpacing.lg) {
+            Spacer()
 
-            Text("No saved crags yet")
-                .font(.headline)
-                .foregroundColor(.secondary)
+            // Hero illustration area
+            ZStack {
+                Circle()
+                    .fill(Color.climbMist)
+                    .frame(width: 160, height: 160)
 
-            Text("Search for climbing areas and add them to your list")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            Button(action: { showingSearchView.toggle() }) {
-                Label("Find Crags", systemImage: "magnifyingglass")
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.climbSandstone, .climbGranite],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             }
+
+            VStack(spacing: ClimbSpacing.sm) {
+                Text("Your Crags")
+                    .font(ClimbTypography.title1)
+                    .foregroundColor(.climbGranite)
+
+                Text("Save climbing areas to track conditions\nand know when it's safe to send")
+                    .font(ClimbTypography.body)
+                    .foregroundColor(.climbStone)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+
+            ClimbButton("Find Crags", icon: "magnifyingglass") {
+                showingSearchView.toggle()
+            }
+            .padding(.horizontal, ClimbSpacing.xxl)
+
+            Spacer()
+
+            ClimbTagline()
+                .padding(.bottom, ClimbSpacing.lg)
         }
-        .padding()
+        .padding(ClimbSpacing.lg)
     }
 
-    private var cragList: some View {
-        List {
-            ForEach(cragStore.savedCrags) { crag in
-                NavigationLink(destination: CragDetailView(crag: crag)) {
-                    CragRowView(crag: crag)
+    // MARK: - Crag Dashboard
+
+    private var cragDashboard: some View {
+        ScrollView {
+            VStack(spacing: ClimbSpacing.lg) {
+                // Status summary header
+                statusSummary
+                    .padding(.horizontal, ClimbSpacing.md)
+
+                // Crag cards
+                LazyVStack(spacing: ClimbSpacing.md) {
+                    ForEach(cragStore.savedCrags) { crag in
+                        NavigationLink(destination: CragDetailView(crag: crag)) {
+                            CragCard(crag: crag)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, ClimbSpacing.md)
+            }
+            .padding(.top, ClimbSpacing.md)
+            .padding(.bottom, ClimbSpacing.xxl)
+        }
+    }
+
+    // MARK: - Status Summary
+
+    private var statusSummary: some View {
+        HStack(spacing: ClimbSpacing.sm) {
+            statusPill(
+                count: safeCrags.count,
+                label: "Safe",
+                color: .climbSafe
+            )
+            statusPill(
+                count: cautionCrags.count,
+                label: "Caution",
+                color: .climbCaution
+            )
+            statusPill(
+                count: unsafeCrags.count,
+                label: "Unsafe",
+                color: .climbUnsafe
+            )
+        }
+    }
+
+    private func statusPill(count: Int, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(ClimbTypography.title2)
+                .foregroundColor(color)
+            Text(label)
+                .font(ClimbTypography.micro)
+                .foregroundColor(.climbStone)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, ClimbSpacing.sm)
+        .background(color.opacity(0.1))
+        .cornerRadius(ClimbRadius.medium)
+    }
+
+    // MARK: - Computed Properties
+
+    private var safeCrags: [Crag] {
+        cragStore.savedCrags.filter { $0.safetyStatus == .safe }
+    }
+
+    private var cautionCrags: [Crag] {
+        cragStore.savedCrags.filter { $0.safetyStatus == .caution }
+    }
+
+    private var unsafeCrags: [Crag] {
+        cragStore.savedCrags.filter { $0.safetyStatus == .unsafe }
+    }
+}
+
+// MARK: - Crag Card
+
+struct CragCard: View {
+    let crag: Crag
+    @EnvironmentObject var cragStore: CragStore
+
+    var body: some View {
+        HStack(spacing: ClimbSpacing.md) {
+            // Status indicator bar
+            RoundedRectangle(cornerRadius: 2)
+                .fill(statusColor)
+                .frame(width: 4)
+
+            // Content
+            VStack(alignment: .leading, spacing: ClimbSpacing.sm) {
+                // Header row
+                HStack {
+                    Text(crag.name)
+                        .font(ClimbTypography.title3)
+                        .foregroundColor(.climbGranite)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    ClimbStatusBadge(crag.safetyStatus, size: .small)
+                }
+
+                // Location
+                Text(crag.location)
+                    .font(ClimbTypography.caption)
+                    .foregroundColor(.climbStone)
+                    .lineLimit(1)
+
+                // Weather info
+                if let precip = crag.precipitation {
+                    HStack(spacing: ClimbSpacing.lg) {
+                        weatherStat(
+                            icon: "drop.fill",
+                            value: "\(String(format: "%.1f", precip.last7DaysMm))mm",
+                            label: "7 days"
+                        )
+
+                        if let days = precip.daysSinceRain {
+                            weatherStat(
+                                icon: "calendar",
+                                value: "\(days)",
+                                label: days == 1 ? "day dry" : "days dry"
+                            )
+                        }
+                    }
+                    .padding(.top, ClimbSpacing.xs)
                 }
             }
-            .onDelete(perform: cragStore.remove)
+
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.climbStone)
         }
+        .padding(ClimbSpacing.md)
+        .background(Color.white)
+        .cornerRadius(ClimbRadius.large)
+        .climbCardShadow()
+    }
+
+    private func weatherStat(icon: String, value: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundColor(.climbRope)
+
+            Text(value)
+                .font(ClimbTypography.captionBold)
+                .foregroundColor(.climbGranite)
+
+            Text(label)
+                .font(ClimbTypography.micro)
+                .foregroundColor(.climbStone)
+        }
+    }
+
+    private var statusColor: Color {
+        switch crag.safetyStatus {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        }
+    }
+}
+
+// MARK: - Legacy Support (keeping old StatusBadge for compatibility)
+
+struct StatusBadge: View {
+    let status: Crag.SafetyStatus
+
+    var body: some View {
+        ClimbStatusBadge(status, size: .small)
     }
 }
 
@@ -82,45 +272,18 @@ struct CragRowView: View {
     let crag: Crag
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(crag.name)
-                    .font(.headline)
-                Text(crag.location)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            StatusBadge(status: crag.safetyStatus)
-        }
+        CragCard(crag: crag)
     }
 }
 
-struct StatusBadge: View {
-    let status: Crag.SafetyStatus
-
-    var body: some View {
-        Text(status.displayName)
-            .font(.caption)
-            .fontWeight(.medium)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(statusColor)
-            .foregroundColor(.white)
-            .cornerRadius(5)
-    }
-
-    private var statusColor: Color {
-        switch status {
-        case .safe: return .green
-        case .caution: return .yellow
-        case .unsafe: return .red
-        }
-    }
+#Preview("With Crags") {
+    let store = CragStore()
+    store.savedCrags = [.preview, .previewUnsafe]
+    return HomeView()
+        .environmentObject(store)
 }
 
-#Preview {
+#Preview("Empty State") {
     HomeView()
         .environmentObject(CragStore())
 }

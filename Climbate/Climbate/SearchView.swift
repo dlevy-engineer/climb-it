@@ -1,11 +1,12 @@
 //
 //  SearchView.swift
-//  ClimbIt
+//  CLIMB.it
 //
-//  Created by David Levy on 3/13/25.
+//  Search and discover climbing areas
 //
 
 import SwiftUI
+import MapKit
 
 struct SearchView: View {
     @EnvironmentObject var cragStore: CragStore
@@ -15,60 +16,73 @@ struct SearchView: View {
     @State private var searchResults: [Crag] = []
     @State private var isLoading: Bool = false
     @State private var hasSearched: Bool = false
+    @State private var showMap: Bool = false
+    @State private var selectedFilter: StatusFilter = .all
+
+    enum StatusFilter: String, CaseIterable {
+        case all = "All"
+        case safe = "Safe"
+        case caution = "Caution"
+        case unsafe = "Unsafe"
+    }
+
+    var filteredResults: [Crag] {
+        switch selectedFilter {
+        case .all: return searchResults
+        case .safe: return searchResults.filter { $0.safetyStatus == .safe }
+        case .caution: return searchResults.filter { $0.safetyStatus == .caution }
+        case .unsafe: return searchResults.filter { $0.safetyStatus == .unsafe }
+        }
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Search bar
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
+            ZStack {
+                Color.climbChalk.ignoresSafeArea()
 
-                    TextField("Search for a crag...", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .onSubmit {
-                            Task { await performSearch() }
-                        }
+                VStack(spacing: 0) {
+                    // Search bar
+                    searchBar
+                        .padding(.horizontal, ClimbSpacing.md)
+                        .padding(.top, ClimbSpacing.sm)
 
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
+                    // Filter chips
+                    filterChips
+                        .padding(.top, ClimbSpacing.sm)
+
+                    // View toggle
+                    viewToggle
+                        .padding(.horizontal, ClimbSpacing.md)
+                        .padding(.top, ClimbSpacing.sm)
+
+                    // Content
+                    if isLoading {
+                        loadingState
+                    } else if searchResults.isEmpty && hasSearched {
+                        emptySearchState
+                    } else if searchResults.isEmpty && !hasSearched {
+                        initialState
+                    } else if showMap {
+                        mapView
+                    } else {
+                        resultsList
                     }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
-                .padding()
-
-                // Content
-                if isLoading {
-                    Spacer()
-                    ProgressView("Searching...")
-                    Spacer()
-                } else if searchResults.isEmpty && hasSearched {
-                    Spacer()
-                    emptySearchState
-                    Spacer()
-                } else if searchResults.isEmpty && !hasSearched {
-                    Spacer()
-                    initialState
-                    Spacer()
-                } else {
-                    resultsList
-                }
             }
-            .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Discover")
+                        .font(ClimbTypography.title3)
+                        .foregroundColor(.climbGranite)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
+                        .font(ClimbTypography.bodyBold)
+                        .foregroundColor(.climbRope)
                 }
             }
             .task {
-                // Load initial crags on appear
                 if searchResults.isEmpty && !hasSearched {
                     await loadInitialCrags()
                 }
@@ -76,60 +90,183 @@ struct SearchView: View {
         }
     }
 
-    private var initialState: some View {
-        VStack(spacing: 12) {
+    // MARK: - Search Bar
+
+    private var searchBar: some View {
+        HStack(spacing: ClimbSpacing.sm) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("Search for climbing areas")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text("or browse all available crags")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(.climbStone)
+
+            TextField("Search crags...", text: $searchText)
+                .font(ClimbTypography.body)
+                .autocorrectionDisabled()
+                .onSubmit {
+                    Task { await performSearch() }
+                }
+
+            if !searchText.isEmpty {
+                Button(action: {
+                    searchText = ""
+                    Task { await loadInitialCrags() }
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.climbStone)
+                }
+            }
         }
+        .padding(ClimbSpacing.md)
+        .background(Color.white)
+        .cornerRadius(ClimbRadius.medium)
+        .climbSubtleShadow()
+    }
+
+    // MARK: - Filter Chips
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: ClimbSpacing.sm) {
+                ForEach(StatusFilter.allCases, id: \.self) { filter in
+                    FilterChip(
+                        title: filter.rawValue,
+                        isSelected: selectedFilter == filter,
+                        color: chipColor(for: filter)
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selectedFilter = filter
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, ClimbSpacing.md)
+        }
+    }
+
+    private func chipColor(for filter: StatusFilter) -> Color {
+        switch filter {
+        case .all: return .climbRope
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        }
+    }
+
+    // MARK: - View Toggle
+
+    private var viewToggle: some View {
+        HStack {
+            Text("\(filteredResults.count) crags")
+                .font(ClimbTypography.caption)
+                .foregroundColor(.climbStone)
+
+            Spacer()
+
+            HStack(spacing: 0) {
+                toggleButton(icon: "list.bullet", isSelected: !showMap) {
+                    withAnimation { showMap = false }
+                }
+                toggleButton(icon: "map", isSelected: showMap) {
+                    withAnimation { showMap = true }
+                }
+            }
+            .background(Color.white)
+            .cornerRadius(ClimbRadius.small)
+            .climbSubtleShadow()
+        }
+    }
+
+    private func toggleButton(icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: isSelected ? icon + ".fill" : icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(isSelected ? .white : .climbStone)
+                .frame(width: 36, height: 32)
+                .background(isSelected ? Color.climbRope : Color.clear)
+                .cornerRadius(ClimbRadius.small)
+        }
+    }
+
+    // MARK: - States
+
+    private var loadingState: some View {
+        VStack(spacing: ClimbSpacing.md) {
+            Spacer()
+            ProgressView()
+                .tint(.climbRope)
+            Text("Searching...")
+                .font(ClimbTypography.caption)
+                .foregroundColor(.climbStone)
+            Spacer()
+        }
+    }
+
+    private var initialState: some View {
+        VStack(spacing: ClimbSpacing.md) {
+            Spacer()
+
+            Image(systemName: "binoculars.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.climbSandstone)
+
+            Text("Discover Crags")
+                .font(ClimbTypography.title2)
+                .foregroundColor(.climbGranite)
+
+            Text("Search for climbing areas or browse\nall available locations")
+                .font(ClimbTypography.body)
+                .foregroundColor(.climbStone)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+        }
+        .padding(ClimbSpacing.lg)
     }
 
     private var emptySearchState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "questionmark.circle")
-                .font(.system(size: 40))
-                .foregroundColor(.secondary)
-            Text("No crags found")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text("Try a different search term")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+        VStack(spacing: ClimbSpacing.md) {
+            Spacer()
+
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 48))
+                .foregroundColor(.climbMist)
+
+            Text("No Results")
+                .font(ClimbTypography.title2)
+                .foregroundColor(.climbGranite)
+
+            Text("Try a different search term\nor adjust your filters")
+                .font(ClimbTypography.body)
+                .foregroundColor(.climbStone)
+                .multilineTextAlignment(.center)
+
+            Spacer()
         }
+        .padding(ClimbSpacing.lg)
     }
+
+    // MARK: - Results List
 
     private var resultsList: some View {
-        List(searchResults) { crag in
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(crag.name)
-                        .font(.headline)
-                    Text(crag.location)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+        ScrollView {
+            LazyVStack(spacing: ClimbSpacing.sm) {
+                ForEach(filteredResults) { crag in
+                    SearchResultRow(crag: crag)
                 }
-
-                Spacer()
-
-                StatusBadge(status: crag.safetyStatus)
-
-                Button(action: { cragStore.toggle(crag) }) {
-                    Image(systemName: cragStore.isSaved(crag) ? "checkmark.circle.fill" : "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(cragStore.isSaved(crag) ? .green : .blue)
-                }
-                .buttonStyle(.plain)
             }
+            .padding(.horizontal, ClimbSpacing.md)
+            .padding(.top, ClimbSpacing.sm)
+            .padding(.bottom, ClimbSpacing.xxl)
         }
-        .listStyle(.plain)
     }
+
+    // MARK: - Map View
+
+    private var mapView: some View {
+        CragMapView(crags: filteredResults)
+            .cornerRadius(ClimbRadius.large)
+            .padding(ClimbSpacing.md)
+    }
+
+    // MARK: - Actions
 
     private func loadInitialCrags() async {
         isLoading = true
@@ -147,6 +284,142 @@ struct SearchView: View {
         hasSearched = true
         searchResults = await cragStore.searchCrags(query: searchText)
         isLoading = false
+    }
+}
+
+// MARK: - Filter Chip
+
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(ClimbTypography.captionBold)
+                .foregroundColor(isSelected ? .white : color)
+                .padding(.horizontal, ClimbSpacing.md)
+                .padding(.vertical, ClimbSpacing.sm)
+                .background(isSelected ? color : color.opacity(0.15))
+                .cornerRadius(ClimbRadius.pill)
+        }
+    }
+}
+
+// MARK: - Search Result Row
+
+struct SearchResultRow: View {
+    let crag: Crag
+    @EnvironmentObject var cragStore: CragStore
+
+    var body: some View {
+        HStack(spacing: ClimbSpacing.md) {
+            // Status dot
+            Circle()
+                .fill(statusColor)
+                .frame(width: 10, height: 10)
+
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                Text(crag.name)
+                    .font(ClimbTypography.bodyBold)
+                    .foregroundColor(.climbGranite)
+                    .lineLimit(1)
+
+                Text(crag.location)
+                    .font(ClimbTypography.caption)
+                    .foregroundColor(.climbStone)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Save button
+            Button(action: { cragStore.toggle(crag) }) {
+                Image(systemName: cragStore.isSaved(crag) ? "checkmark.circle.fill" : "plus.circle")
+                    .font(.title2)
+                    .foregroundColor(cragStore.isSaved(crag) ? .climbSafe : .climbRope)
+            }
+        }
+        .padding(ClimbSpacing.md)
+        .background(Color.white)
+        .cornerRadius(ClimbRadius.medium)
+        .climbSubtleShadow()
+    }
+
+    private var statusColor: Color {
+        switch crag.safetyStatus {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        }
+    }
+}
+
+// MARK: - Map View
+
+struct CragMapView: View {
+    let crags: [Crag]
+
+    @State private var region = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795), // US center
+        span: MKCoordinateSpan(latitudeDelta: 40, longitudeDelta: 40)
+    )
+
+    var body: some View {
+        Map(coordinateRegion: $region, annotationItems: crags) { crag in
+            MapAnnotation(coordinate: CLLocationCoordinate2D(
+                latitude: crag.latitude,
+                longitude: crag.longitude
+            )) {
+                CragMapPin(crag: crag)
+            }
+        }
+    }
+}
+
+struct CragMapPin: View {
+    let crag: Crag
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 28, height: 28)
+
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white)
+            }
+
+            Triangle()
+                .fill(statusColor)
+                .frame(width: 10, height: 6)
+                .offset(y: -2)
+        }
+        .climbSubtleShadow()
+    }
+
+    private var statusColor: Color {
+        switch crag.safetyStatus {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        }
+    }
+}
+
+struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }
 
