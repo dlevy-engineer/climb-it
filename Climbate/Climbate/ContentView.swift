@@ -132,8 +132,10 @@ struct DiscoverTab: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.climbStone)
 
-            TextField("Search crags...", text: $searchText)
+            TextField("Search crags...", text: $searchText, prompt: Text("Search crags...").foregroundColor(.climbStone))
                 .font(ClimbTypography.body)
+                .foregroundColor(.climbGranite)
+                .tint(.climbRope)
                 .autocorrectionDisabled()
                 .onSubmit {
                     Task { await performSearch() }

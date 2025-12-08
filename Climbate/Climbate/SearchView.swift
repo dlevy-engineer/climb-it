@@ -97,8 +97,10 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.climbStone)
 
-            TextField("Search crags...", text: $searchText)
+            TextField("Search crags...", text: $searchText, prompt: Text("Search crags...").foregroundColor(.climbStone))
                 .font(ClimbTypography.body)
+                .foregroundColor(.climbGranite)
+                .tint(.climbRope)
                 .autocorrectionDisabled()
                 .onSubmit {
                     Task { await performSearch() }
@@ -363,18 +365,20 @@ struct SearchResultRow: View {
 struct CragMapView: View {
     let crags: [Crag]
 
-    @State private var region = MKCoordinateRegion(
+    @State private var position: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795), // US center
         span: MKCoordinateSpan(latitudeDelta: 40, longitudeDelta: 40)
-    )
+    ))
 
     var body: some View {
-        Map(coordinateRegion: $region, annotationItems: crags) { crag in
-            MapAnnotation(coordinate: CLLocationCoordinate2D(
-                latitude: crag.latitude,
-                longitude: crag.longitude
-            )) {
-                CragMapPin(crag: crag)
+        Map(position: $position) {
+            ForEach(crags) { crag in
+                Annotation(crag.name, coordinate: CLLocationCoordinate2D(
+                    latitude: crag.latitude,
+                    longitude: crag.longitude
+                )) {
+                    CragMapPin(crag: crag)
+                }
             }
         }
     }

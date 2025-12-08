@@ -17,10 +17,10 @@ extension Color {
     static let climbChalk = Color(hex: "F5F1EB")        // Off-white chalk - backgrounds
     static let climbRope = Color(hex: "0984E3")         // Climbing rope blue - interactive
 
-    // Safety status colors
-    static let climbSafe = Color(hex: "00B894")         // Fresh green
-    static let climbCaution = Color(hex: "FDCB6E")      // Warm amber
-    static let climbUnsafe = Color(hex: "E17055")       // Soft coral red
+    // Safety status colors (darkened for readability)
+    static let climbSafe = Color(hex: "00966D")         // Deep green
+    static let climbCaution = Color(hex: "D4930D")      // Rich amber
+    static let climbUnsafe = Color(hex: "C0392B")       // Bold red
 
     // Supporting colors
     static let climbMist = Color(hex: "DFE6E9")         // Light gray for cards

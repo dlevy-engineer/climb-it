@@ -16,12 +16,13 @@ class APIClient {
 
     private init() {
         #if DEBUG
-        // Use localhost for simulator/debug builds
-        // Change this to your local machine's IP if testing on a real device
-        self.baseURL = URL(string: "http://localhost:8000")!
+        // Use production API for now (no local server running)
+        // TODO: Switch back to localhost:8000 for local development
+        self.baseURL = URL(string: "http://climbit-prod-alb-2136483458.us-east-1.elb.amazonaws.com")!
         #else
         // Production API endpoint
-        self.baseURL = URL(string: "https://api.climbit.app")!
+        // TODO: Set up api.climbit.app DNS with HTTPS
+        self.baseURL = URL(string: "http://climbit-prod-alb-2136483458.us-east-1.elb.amazonaws.com")!
         #endif
 
         let config = URLSessionConfiguration.default

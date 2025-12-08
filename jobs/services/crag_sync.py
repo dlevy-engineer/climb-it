@@ -39,6 +39,7 @@ class CragSyncService:
         self.settings = get_settings()
         self.scraper = MountainProjectScraper()
         self.stats = {
+            "states_processed": 0,
             "areas_processed": 0,
             "crags_found": 0,
             "crags_upserted": 0,
@@ -58,6 +59,8 @@ class CragSyncService:
         """
         Full sync of all areas from Mountain Project.
 
+        Processes and saves crags as it goes - no waiting for full collection.
+
         Args:
             max_areas: Optional limit on number of areas to process
 
@@ -70,42 +73,50 @@ class CragSyncService:
         state_urls = self.scraper.get_all_state_urls()
         log.info("states_to_process", count=len(state_urls))
 
-        areas_to_process = []
+        total_areas_processed = 0
 
-        # Gather all area URLs from state pages
+        # Process each state and save crags immediately
         for state_name, state_url in state_urls:
+            if max_areas and total_areas_processed >= max_areas:
+                log.info("max_areas_reached", max=max_areas)
+                break
+
             try:
+                # Get areas for this state
                 areas = self.scraper.get_areas_from_listing(state_url)
-                areas_to_process.extend(areas)
-                log.info("state_processed", state=state_name, areas=len(areas))
+                log.info("state_areas_found", state=state_name, areas=len(areas))
+
+                # Process this state's areas immediately (stream processing)
+                batch = []
+                for area in areas:
+                    if max_areas and total_areas_processed >= max_areas:
+                        break
+
+                    try:
+                        found = self._process_area_recursive(area.url, batch, max_depth=3)
+                        total_areas_processed += 1
+
+                        # Save batch when it reaches threshold
+                        if len(batch) >= self.settings.batch_size:
+                            self._upsert_batch(batch)
+                            batch = []
+
+                    except Exception as e:
+                        log.error("area_failed", url=area.url, error=str(e))
+                        self.stats["errors"] += 1
+
+                # Save remaining batch for this state
+                if batch:
+                    self._upsert_batch(batch)
+
+                self.stats["states_processed"] += 1
+                log.info("state_complete", state=state_name, **self.stats)
+
                 time.sleep(self.settings.request_delay_seconds)
+
             except Exception as e:
                 log.error("state_failed", state=state_name, error=str(e))
                 self.stats["errors"] += 1
-
-        if max_areas:
-            areas_to_process = areas_to_process[:max_areas]
-
-        log.info("areas_to_process", total=len(areas_to_process))
-
-        # Process each area - recursively drill into sub-areas if no coords
-        batch = []
-        for area in areas_to_process:
-            try:
-                found = self._process_area_recursive(area.url, batch, max_depth=3)
-                if found and len(batch) >= self.settings.batch_size:
-                    self._upsert_batch(batch)
-                    batch = []
-            except Exception as e:
-                log.error("area_failed", url=area.url, error=str(e))
-                self.stats["errors"] += 1
-
-            if self.stats["areas_processed"] % 100 == 0:
-                log.info("sync_progress", **self.stats)
-
-        # Final batch
-        if batch:
-            self._upsert_batch(batch)
 
         log.info("crag_sync_complete", **self.stats)
         return self.stats
@@ -139,6 +150,12 @@ class CragSyncService:
             try:
                 if self._process_area_recursive(sub.url, batch, max_depth - 1):
                     found_any = True
+
+                # Save batch if it gets large (stream saves)
+                if len(batch) >= self.settings.batch_size:
+                    self._upsert_batch(batch)
+                    batch.clear()
+
             except Exception as e:
                 log.warning("sub_area_failed", url=sub.url, error=str(e))
                 self.stats["errors"] += 1
@@ -157,6 +174,9 @@ class CragSyncService:
 
     def _upsert_batch(self, areas: list) -> int:
         """Upsert a batch of areas to the database."""
+        if not areas:
+            return 0
+
         session = get_session()
         count = 0
 
@@ -190,7 +210,7 @@ class CragSyncService:
 
             session.commit()
             self.stats["crags_upserted"] += count
-            log.info("batch_upserted", count=count)
+            log.info("batch_upserted", count=count, total=self.stats["crags_upserted"])
 
         except Exception as e:
             session.rollback()
