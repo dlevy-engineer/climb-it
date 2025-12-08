@@ -1,20 +1,17 @@
-"""Mountain Project web scraper.
+"""Mountain Project web scraper using Playwright.
 
-Note: The Mountain Project Data API was deprecated in late 2020 when
-Adventure Projects was acquired by onX. This module uses lightweight
-web scraping with httpx + BeautifulSoup instead of Selenium for
-better performance and lower resource usage.
+Uses Playwright with Chromium to bypass Cloudflare bot protection.
+Mountain Project uses Cloudflare which blocks simple HTTP requests.
 
 Scraping is done respectfully with:
-- Proper User-Agent identification
-- Rate limiting between requests
+- Proper rate limiting between requests
 - Retry logic with exponential backoff
 """
-import httpx
 import structlog
 from dataclasses import dataclass
 from typing import Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
+from playwright.sync_api import sync_playwright, Browser, Page
 
 log = structlog.get_logger()
 
@@ -33,25 +30,48 @@ class MPArea:
 
 class MountainProjectScraper:
     """
-    Web scraper for Mountain Project.
+    Web scraper for Mountain Project using Playwright.
 
-    Uses httpx instead of Selenium - much lighter weight.
-    Scrapes area listing pages to extract crag information.
+    Uses Playwright + Chromium to render JavaScript and bypass
+    Cloudflare's bot protection.
     """
 
     BASE_URL = "https://www.mountainproject.com"
     AREAS_URL = "https://www.mountainproject.com/route-guide"
 
     def __init__(self):
-        self.client = httpx.Client(
-            timeout=30.0,
-            headers={
-                "User-Agent": "ClimbIt/1.0 (climbing app; respectful scraping)"
-            }
-        )
+        self._playwright = None
+        self._browser: Optional[Browser] = None
+        self._page: Optional[Page] = None
+
+    def _ensure_browser(self):
+        """Lazily initialize browser on first use."""
+        if self._browser is None:
+            log.info("starting_playwright_browser")
+            self._playwright = sync_playwright().start()
+            self._browser = self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                ]
+            )
+            self._page = self._browser.new_page()
+            self._page.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            })
 
     def close(self):
-        self.client.close()
+        if self._page:
+            self._page.close()
+        if self._browser:
+            self._browser.close()
+        if self._playwright:
+            self._playwright.stop()
+        self._page = None
+        self._browser = None
+        self._playwright = None
 
     def __enter__(self):
         return self
@@ -61,11 +81,16 @@ class MountainProjectScraper:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def fetch_page(self, url: str) -> str:
-        """Fetch a page with retry logic."""
+        """Fetch a page with Playwright, waiting for content to load."""
+        self._ensure_browser()
         log.debug("scraper_fetch", url=url)
-        response = self.client.get(url)
-        response.raise_for_status()
-        return response.text
+
+        self._page.goto(url, wait_until="networkidle", timeout=30000)
+
+        # Wait for content to be rendered
+        self._page.wait_for_selector("body", timeout=10000)
+
+        return self._page.content()
 
     def get_all_state_urls(self) -> list[tuple[str, str]]:
         """Get all US state area URLs from the route guide."""
@@ -90,8 +115,6 @@ class MountainProjectScraper:
     def get_areas_from_listing(self, listing_url: str) -> list[MPArea]:
         """
         Extract area information from a listing page.
-
-        This is a lightweight alternative to the full Selenium crawler.
         """
         from bs4 import BeautifulSoup
         import re
@@ -135,7 +158,7 @@ class MountainProjectScraper:
 
         try:
             html = self.fetch_page(area_url)
-        except httpx.HTTPError as e:
+        except Exception as e:
             log.warning("area_fetch_failed", url=area_url, error=str(e))
             return None
 
@@ -175,6 +198,7 @@ class MountainProjectScraper:
             log.debug("area_no_coordinates", url=area_url, name=name)
             return None
 
+        log.info("area_details_found", name=name, lat=lat, lon=lon)
         return MPArea(
             id=area_id,
             name=name,
