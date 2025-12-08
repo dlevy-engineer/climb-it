@@ -114,253 +114,76 @@ resource "aws_iam_access_key" "github_actions" {
   user = aws_iam_user.github_actions.name
 }
 
-# IAM Policy for GitHub Actions
-resource "aws_iam_user_policy" "github_actions" {
-  name = "${var.project_name}-github-actions-policy"
-  user = aws_iam_user.github_actions.name
+# Use AWS managed policies for common permissions
+resource "aws_iam_user_policy_attachment" "ecr_power_user" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+}
+
+resource "aws_iam_user_policy_attachment" "ecs_full_access" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonECS_FullAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "vpc_full_access" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonVPCFullAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "rds_full_access" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "secrets_manager" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+}
+
+resource "aws_iam_user_policy_attachment" "cloudwatch_logs" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "eventbridge" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEventBridgeFullAccess"
+}
+
+resource "aws_iam_user_policy_attachment" "elb" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = "arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"
+}
+
+# Custom policy for Terraform state and IAM role management
+resource "aws_iam_policy" "github_actions_custom" {
+  name = "${var.project_name}-github-actions-custom"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # Terraform State Access
       {
         Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          aws_s3_bucket.terraform_state.arn,
-          "${aws_s3_bucket.terraform_state.arn}/*"
-        ]
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
+        Resource = [aws_s3_bucket.terraform_state.arn, "${aws_s3_bucket.terraform_state.arn}/*"]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = aws_dynamodb_table.terraform_locks.arn
       },
-      # ECR Access
       {
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ecr:DescribeRepositories",
-          "ecr:CreateRepository",
-          "ecr:DeleteRepository",
-          "ecr:DescribeImages",
-          "ecr:ListImages"
-        ]
-        Resource = "arn:aws:ecr:${var.aws_region}:*:repository/${var.project_name}-*"
-      },
-      # ECS Access
-      {
-        Effect = "Allow"
-        Action = [
-          "ecs:UpdateService",
-          "ecs:DescribeServices",
-          "ecs:DescribeClusters",
-          "ecs:DescribeTaskDefinition",
-          "ecs:RegisterTaskDefinition",
-          "ecs:DeregisterTaskDefinition",
-          "ecs:ListServices",
-          "ecs:ListClusters",
-          "ecs:CreateCluster",
-          "ecs:DeleteCluster",
-          "ecs:CreateService",
-          "ecs:DeleteService",
-          "ecs:RunTask",
-          "ecs:StopTask",
-          "ecs:ListTasks",
-          "ecs:DescribeTasks"
-        ]
-        Resource = "*"
-        Condition = {
-          StringLike = {
-            "aws:ResourceTag/Project" = "ClimbIt"
-          }
-        }
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecs:DescribeClusters",
-          "ecs:DescribeServices",
-          "ecs:ListServices",
-          "ecs:ListClusters"
-        ]
-        Resource = "*"
-      },
-      # ECS Task Execution (needed for task definitions)
-      {
-        Effect = "Allow"
-        Action = [
-          "ecs:RegisterTaskDefinition",
-          "ecs:DeregisterTaskDefinition",
-          "ecs:DescribeTaskDefinition",
-          "ecs:ListTaskDefinitions"
-        ]
-        Resource = "*"
-      },
-      # IAM PassRole for ECS
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:PassRole"
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "iam:PassedToService" = [
-              "ecs-tasks.amazonaws.com",
-              "events.amazonaws.com"
-            ]
-          }
-        }
-      },
-      # Full Terraform permissions for infrastructure management
-      # VPC
-      {
-        Effect = "Allow"
-        Action = [
-          "ec2:*Vpc*",
-          "ec2:*Subnet*",
-          "ec2:*RouteTable*",
-          "ec2:*InternetGateway*",
-          "ec2:*NatGateway*",
-          "ec2:*SecurityGroup*",
-          "ec2:*NetworkAcl*",
-          "ec2:*Address*",
-          "ec2:CreateTags",
-          "ec2:DeleteTags",
-          "ec2:DescribeTags",
-          "ec2:DescribeAvailabilityZones",
-          "ec2:DescribeAccountAttributes"
-        ]
-        Resource = "*"
-      },
-      # RDS
-      {
-        Effect = "Allow"
-        Action = [
-          "rds:*"
-        ]
-        Resource = "arn:aws:rds:${var.aws_region}:*:*:${var.project_name}-*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "rds:DescribeDBInstances",
-          "rds:DescribeDBSubnetGroups",
-          "rds:DescribeDBParameterGroups",
-          "rds:DescribeDBClusters",
-          "rds:CreateDBSubnetGroup",
-          "rds:DeleteDBSubnetGroup",
-          "rds:CreateDBInstance",
-          "rds:DeleteDBInstance",
-          "rds:ModifyDBInstance",
-          "rds:AddTagsToResource",
-          "rds:ListTagsForResource"
-        ]
-        Resource = "*"
-      },
-      # Secrets Manager
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:*"
-        ]
-        Resource = "arn:aws:secretsmanager:${var.aws_region}:*:secret:${var.project_name}-*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:ListSecrets"
-        ]
-        Resource = "*"
-      },
-      # CloudWatch Logs
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:DeleteLogGroup",
-          "logs:DescribeLogGroups",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:PutRetentionPolicy",
-          "logs:TagResource"
-        ]
-        Resource = "*"
-      },
-      # EventBridge
-      {
-        Effect = "Allow"
-        Action = [
-          "events:*"
-        ]
-        Resource = "arn:aws:events:${var.aws_region}:*:rule/${var.project_name}-*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "events:DescribeRule",
-          "events:ListRules",
-          "events:ListTargetsByRule",
-          "events:PutRule",
-          "events:PutTargets",
-          "events:DeleteRule",
-          "events:RemoveTargets"
-        ]
-        Resource = "*"
-      },
-      # IAM (for creating ECS task roles, etc.)
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:GetRole",
-          "iam:CreateRole",
-          "iam:DeleteRole",
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-          "iam:PutRolePolicy",
-          "iam:DeleteRolePolicy",
-          "iam:GetRolePolicy",
-          "iam:ListRolePolicies",
-          "iam:ListAttachedRolePolicies",
-          "iam:TagRole",
-          "iam:ListInstanceProfilesForRole"
-        ]
-        Resource = "arn:aws:iam::*:role/${var.project_name}-*"
-      },
-      # ELB (for ALB)
-      {
-        Effect = "Allow"
-        Action = [
-          "elasticloadbalancing:*"
-        ]
+        Effect   = "Allow"
+        Action   = ["iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies", "iam:TagRole", "iam:ListInstanceProfilesForRole", "iam:PassRole"]
         Resource = "*"
       }
     ]
   })
+}
+
+resource "aws_iam_user_policy_attachment" "github_actions_custom" {
+  user       = aws_iam_user.github_actions.name
+  policy_arn = aws_iam_policy.github_actions_custom.arn
 }
 
 # Outputs
