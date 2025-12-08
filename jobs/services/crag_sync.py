@@ -88,23 +88,14 @@ class CragSyncService:
 
         log.info("areas_to_process", total=len(areas_to_process))
 
-        # Process each area
+        # Process each area - recursively drill into sub-areas if no coords
         batch = []
         for area in areas_to_process:
-            self.stats["areas_processed"] += 1
-
             try:
-                details = self.scraper.get_area_details(area.url)
-                if details and details.latitude and details.longitude:
-                    batch.append(details)
-                    self.stats["crags_found"] += 1
-
-                    if len(batch) >= self.settings.batch_size:
-                        self._upsert_batch(batch)
-                        batch = []
-
-                time.sleep(self.settings.request_delay_seconds)
-
+                found = self._process_area_recursive(area.url, batch, max_depth=3)
+                if found and len(batch) >= self.settings.batch_size:
+                    self._upsert_batch(batch)
+                    batch = []
             except Exception as e:
                 log.error("area_failed", url=area.url, error=str(e))
                 self.stats["errors"] += 1
@@ -118,6 +109,41 @@ class CragSyncService:
 
         log.info("crag_sync_complete", **self.stats)
         return self.stats
+
+    def _process_area_recursive(self, url: str, batch: list, max_depth: int = 3) -> bool:
+        """
+        Process an area, recursively drilling into sub-areas if no coords found.
+
+        Returns True if at least one crag with coords was found.
+        """
+        if max_depth <= 0:
+            return False
+
+        self.stats["areas_processed"] += 1
+        time.sleep(self.settings.request_delay_seconds)
+
+        # Try to get details with coordinates
+        details = self.scraper.get_area_details(url)
+        if details and details.latitude and details.longitude:
+            batch.append(details)
+            self.stats["crags_found"] += 1
+            log.debug("crag_found", url=url, name=details.name)
+            return True
+
+        # No coords - drill into sub-areas
+        log.debug("drilling_into_subareas", url=url, depth=max_depth)
+        sub_areas = self.scraper.get_areas_from_listing(url)
+
+        found_any = False
+        for sub in sub_areas[:10]:  # Limit sub-areas to avoid explosion
+            try:
+                if self._process_area_recursive(sub.url, batch, max_depth - 1):
+                    found_any = True
+            except Exception as e:
+                log.warning("sub_area_failed", url=sub.url, error=str(e))
+                self.stats["errors"] += 1
+
+        return found_any
 
     def sync_area(self, area_url: str) -> Optional[Crag]:
         """Sync a single area by URL."""
