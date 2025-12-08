@@ -16,6 +16,21 @@ services:
       - ./api:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
+  jobs:
+    build: ./jobs
+    environment:
+      - DATABASE_URL=mysql+pymysql://climbit:localpass@db:3306/climbit
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./jobs:/app
+    profiles:
+      - jobs  # Only run when explicitly requested
+    # Override default command for manual runs
+    entrypoint: ["python", "-m", "cli"]
+    command: ["--help"]
+
   db:
     image: mysql:8.0
     environment:

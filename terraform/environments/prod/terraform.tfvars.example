@@ -1,0 +1,5 @@
+# Example terraform.tfvars for production
+# Copy to terraform.tfvars and fill in values
+
+aws_region  = "us-east-1"
+environment = "prod"

@@ -30,10 +30,13 @@ A rock climbing companion app that helps climbers find safe crags based on recen
 ### Data Flow
 
 ```
-Mountain Project ──[Crawler]──> AWS RDS MySQL ──[API]──> iOS App
-                                      ↑
-                            Weather API ──[Scheduled Job]
+Mountain Project ──[Jobs Scraper]──> AWS RDS MySQL ──[API]──> iOS App
+     (weekly sync)                         ↑
+                              Open-Meteo ──[Jobs Weather Sync]
+                               (daily)
 ```
+
+Note: The Mountain Project Data API was deprecated in late 2020. The jobs module uses lightweight web scraping with httpx + BeautifulSoup to gather crag data.
 
 ---
 
@@ -116,7 +119,7 @@ climb-it/
 │   └── tests/
 │       └── test_crags.py
 │
-├── crawler/                    # Renamed from cllimb-it
+├── crawler/                    # Renamed from cllimb-it (legacy)
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── crawler.py
@@ -125,6 +128,20 @@ climb-it/
 │   ├── db_writer.py
 │   ├── page_parser.py
 │   └── alembic/
+│
+├── jobs/                       # NEW: Scheduled data sync jobs
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── cli.py                  # CLI entry point
+│   ├── config.py               # Settings via pydantic
+│   ├── db.py                   # Database setup
+│   ├── clients/
+│   │   ├── mountain_project.py # Web scraper (API deprecated)
+│   │   └── open_meteo.py       # Weather API client
+│   └── services/
+│       ├── crag_sync.py        # Sync crags from MP
+│       ├── weather_sync.py     # Sync precipitation data
+│       └── safety_calculator.py# Calculate safety status
 │
 ├── terraform/                  # NEW: Infrastructure as Code
 │   ├── environments/
@@ -699,17 +716,18 @@ aws ecs update-service --cluster climbit --service climbit-api --force-new-deplo
 
 ## Roadmap
 
-### Phase 1: Foundation (Current)
+### Phase 1: Foundation (Complete)
 - [x] Database schema
-- [x] Mountain Project crawler
+- [x] Mountain Project scraper (API deprecated, using web scraping)
 - [x] Basic iOS UI
-- [ ] FastAPI backend
-- [ ] Terraform infrastructure
-- [ ] CI/CD pipelines
+- [x] FastAPI backend
+- [x] Terraform infrastructure
+- [x] CI/CD pipelines
+- [x] Jobs module for scheduled data sync
 
-### Phase 2: Core Features
-- [ ] Precipitation data integration (weather API)
-- [ ] Safety status calculation logic
+### Phase 2: Core Features (Current)
+- [x] Precipitation data integration (Open-Meteo API)
+- [x] Safety status calculation logic
 - [ ] Real weather display in iOS app
 - [ ] Crag search with filters
 - [ ] Nearby crags feature
