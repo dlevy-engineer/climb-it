@@ -42,6 +42,7 @@ class MountainProjectScraper:
     def __init__(self):
         self._playwright = None
         self._browser: Optional[Browser] = None
+        self._context = None
         self._page: Optional[Page] = None
 
     def _ensure_browser(self):
@@ -57,19 +58,20 @@ class MountainProjectScraper:
                     "--disable-dev-shm-usage",
                 ]
             )
-            self._page = self._browser.new_page()
-            self._page.set_extra_http_headers({
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            })
+            self._context = self._browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            self._page = self._context.new_page()
 
     def close(self):
-        if self._page:
-            self._page.close()
+        if self._context:
+            self._context.close()
         if self._browser:
             self._browser.close()
         if self._playwright:
             self._playwright.stop()
         self._page = None
+        self._context = None
         self._browser = None
         self._playwright = None
 
@@ -85,10 +87,7 @@ class MountainProjectScraper:
         self._ensure_browser()
         log.debug("scraper_fetch", url=url)
 
-        self._page.goto(url, wait_until="networkidle", timeout=30000)
-
-        # Wait for content to be rendered
-        self._page.wait_for_selector("body", timeout=10000)
+        self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
         return self._page.content()
 
@@ -168,7 +167,7 @@ class MountainProjectScraper:
         h1 = soup.find("h1")
         name = h1.get_text(strip=True) if h1 else "Unknown"
 
-        # Extract coordinates from GPS table row
+        # Extract coordinates from GPS table row using regex
         lat, lon = None, None
         for row in soup.find_all("tr"):
             label = row.find("td")
@@ -176,12 +175,14 @@ class MountainProjectScraper:
                 value_td = label.find_next_sibling("td")
                 if value_td:
                     gps_text = value_td.get_text(strip=True)
-                    try:
-                        parts = gps_text.split(",")
-                        lat = float(parts[0].strip())
-                        lon = float(parts[1].strip().split()[0])
-                    except (ValueError, IndexError):
-                        pass
+                    # Use regex to extract coordinates (handles "Google" suffix)
+                    coord_match = re.search(r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", gps_text)
+                    if coord_match:
+                        try:
+                            lat = float(coord_match.group(1))
+                            lon = float(coord_match.group(2))
+                        except ValueError:
+                            pass
 
         # Extract area ID
         match = re.search(r"/area/(\d+)/", area_url)
