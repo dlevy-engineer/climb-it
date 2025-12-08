@@ -309,10 +309,10 @@ struct CragDetailView: View {
                     .foregroundColor(.climbGranite)
             }
 
-            NavigationLink(destination: AlternateAdventureView()) {
+            NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
-                    Text("Find Alternatives")
+                    Text("Find Alternatives Near \(displayCrag.name)")
                 }
                 .font(ClimbTypography.captionBold)
                 .foregroundColor(.climbRope)

@@ -7,16 +7,80 @@
 
 import SwiftUI
 import MapKit
+import CoreLocation
+
+// MARK: - Location Manager
+
+class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    @Published var location: CLLocationCoordinate2D?
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyKilometer
+    }
+
+    func requestLocation() {
+        manager.requestWhenInUseAuthorization()
+        manager.requestLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let loc = locations.first {
+            DispatchQueue.main.async {
+                self.location = loc.coordinate
+            }
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location error: \(error.localizedDescription)")
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        DispatchQueue.main.async {
+            self.authorizationStatus = manager.authorizationStatus
+        }
+    }
+}
+
+// MARK: - Alternate Adventure View
 
 struct AlternateAdventureView: View {
     @EnvironmentObject var cragStore: CragStore
     @StateObject private var adventureService = AdventureService()
+    @StateObject private var locationManager = LocationManager()
     @State private var selectedType: AdventureType = .dryCrag
-    @State private var userLocation: CLLocationCoordinate2D?
 
-    // Default to a central US location if we don't have user location
+    // Optional source crag - if provided, search from that location
+    var sourceCrag: Crag?
+
+    // Determine search location: crag > user location > default
     private var searchLocation: CLLocationCoordinate2D {
-        userLocation ?? CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+        if let crag = sourceCrag {
+            return CLLocationCoordinate2D(latitude: crag.latitude, longitude: crag.longitude)
+        }
+        if let userLoc = locationManager.location {
+            return userLoc
+        }
+        // Default to central US
+        return CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795)
+    }
+
+    private var locationDescription: String {
+        if let crag = sourceCrag {
+            return "near \(crag.name)"
+        }
+        if locationManager.location != nil {
+            return "near your location"
+        }
+        return "in the US"
+    }
+
+    private var isUsingCragLocation: Bool {
+        sourceCrag != nil
     }
 
     var body: some View {
@@ -45,8 +109,22 @@ struct AlternateAdventureView: View {
         .toolbarBackground(Color.climbChalk, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.light, for: .navigationBar)
+        .onAppear {
+            // Request location if we don't have a source crag
+            if sourceCrag == nil {
+                locationManager.requestLocation()
+            }
+        }
         .task {
             await loadAdventures()
+        }
+        .onChange(of: locationManager.location) { _, newLocation in
+            // Reload when we get user location (only if not using crag)
+            if sourceCrag == nil && newLocation != nil {
+                Task {
+                    await loadAdventures()
+                }
+            }
         }
     }
 
@@ -73,8 +151,28 @@ struct AlternateAdventureView: View {
                         .foregroundColor(.climbSandstone)
                 }
             }
+
+            // Location indicator
+            locationBadge
         }
         .padding(.vertical, ClimbSpacing.md)
+    }
+
+    private var locationBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isUsingCragLocation ? "mappin.circle.fill" : "location.fill")
+                .font(.system(size: 12))
+            Text("Searching \(locationDescription)")
+                .font(ClimbTypography.caption)
+        }
+        .foregroundColor(isUsingCragLocation ? .climbSandstone : .climbRope)
+        .padding(.horizontal, ClimbSpacing.sm)
+        .padding(.vertical, 6)
+        .background(
+            (isUsingCragLocation ? Color.climbSandstone : Color.climbRope)
+                .opacity(0.1)
+        )
+        .cornerRadius(ClimbRadius.pill)
     }
 
     // MARK: - Category Tabs
@@ -315,9 +413,22 @@ struct AdventureCard: View {
     }
 }
 
-#Preview {
+#Preview("From Current Location") {
     NavigationStack {
         AlternateAdventureView()
             .environmentObject(CragStore())
+    }
+}
+
+#Preview("From Specific Crag") {
+    NavigationStack {
+        AlternateAdventureView(sourceCrag: Crag(
+            id: UUID(),
+            name: "Red River Gorge",
+            latitude: 37.7749,
+            longitude: -83.6832,
+            safetyStatus: .caution
+        ))
+        .environmentObject(CragStore())
     }
 }
