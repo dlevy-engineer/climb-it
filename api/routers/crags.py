@@ -219,7 +219,7 @@ def get_weather_icon(precip_mm: float) -> str:
 @router.get("/{crag_id}/forecast", response_model=ForecastResponse)
 async def get_crag_forecast(
     crag_id: str,
-    days: int = Query(7, ge=1, le=14, description="Number of forecast days"),
+    days: int = Query(14, ge=1, le=16, description="Number of forecast days (max 16)"),
     db: Session = Depends(get_db),
 ):
     """Get safety forecast for a crag with daily predictions."""

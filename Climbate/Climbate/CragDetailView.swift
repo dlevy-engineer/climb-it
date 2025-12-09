@@ -14,6 +14,8 @@ struct CragDetailView: View {
     @State private var detailedCrag: Crag?
     @State private var forecast: CragForecast?
     @State private var isLoadingForecast = false
+    @State private var showForecast = false
+    @AppStorage("useImperialUnits") private var useImperialUnits = true
 
     var displayCrag: Crag {
         detailedCrag ?? crag
@@ -35,11 +37,17 @@ struct CragDetailView: View {
                             statusCard
                         }
 
-                        // Weather card
+                        // Weather card (tappable to expand forecast)
                         weatherCard
 
-                        // Forecast calendar
-                        forecastCard
+                        // Forecast calendar (expandable)
+                        if showForecast {
+                            forecastCard
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: .top).combined(with: .opacity),
+                                    removal: .opacity
+                                ))
+                        }
 
                         // Quick actions
                         actionsCard
@@ -47,6 +55,7 @@ struct CragDetailView: View {
                         // Location links
                         linksCard
                     }
+                    .animation(.easeInOut(duration: 0.3), value: showForecast)
                     .padding(ClimbSpacing.md)
                     .padding(.bottom, ClimbSpacing.xxl)
                 }
@@ -158,58 +167,85 @@ struct CragDetailView: View {
     // MARK: - Weather Card
 
     private var weatherCard: some View {
-        VStack(alignment: .leading, spacing: ClimbSpacing.md) {
-            HStack {
-                Image(systemName: "cloud.sun.fill")
-                    .foregroundColor(.climbRope)
-                Text("Weather Data")
-                    .font(ClimbTypography.bodyBold)
-                    .foregroundColor(.climbGranite)
+        Button(action: {
+            withAnimation {
+                showForecast.toggle()
             }
+        }) {
+            VStack(alignment: .leading, spacing: ClimbSpacing.md) {
+                HStack {
+                    Image(systemName: "cloud.sun.fill")
+                        .foregroundColor(.climbRope)
+                    Text("Weather Data")
+                        .font(ClimbTypography.bodyBold)
+                        .foregroundColor(.climbGranite)
 
-            if let precip = displayCrag.precipitation {
-                HStack(spacing: ClimbSpacing.md) {
-                    // Precipitation gauge
-                    precipitationGauge(value: precip.last7DaysMm)
+                    Spacer()
 
-                    Divider()
-                        .frame(height: 60)
-
-                    // Days since rain
-                    if let days = precip.daysSinceRain {
-                        daysSinceRainView(days: days)
-                    } else {
-                        VStack {
-                            Text("--")
-                                .font(ClimbTypography.title1)
-                                .foregroundColor(.climbGranite)
-                            Text("days dry")
-                                .font(ClimbTypography.micro)
-                                .foregroundColor(.climbStone)
+                    // Expand/collapse indicator
+                    HStack(spacing: 4) {
+                        if isLoadingForecast {
+                            ProgressView()
+                                .scaleEffect(0.7)
                         }
-                        .frame(maxWidth: .infinity)
+                        Text(showForecast ? "Hide Forecast" : "14-Day Forecast")
+                            .font(ClimbTypography.caption)
+                            .foregroundColor(.climbRope)
+                        Image(systemName: showForecast ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.climbRope)
                     }
                 }
-            } else {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundColor(.climbCaution)
-                    Text("Weather data unavailable")
-                        .font(ClimbTypography.body)
-                        .foregroundColor(.climbStone)
+
+                if let precip = displayCrag.precipitation {
+                    HStack(spacing: ClimbSpacing.md) {
+                        // Precipitation gauge
+                        precipitationGauge(value: precip.last7DaysMm)
+
+                        Divider()
+                            .frame(height: 60)
+
+                        // Days since rain
+                        if let days = precip.daysSinceRain {
+                            daysSinceRainView(days: days)
+                        } else {
+                            VStack {
+                                Text("--")
+                                    .font(ClimbTypography.title1)
+                                    .foregroundColor(.climbGranite)
+                                Text("days dry")
+                                    .font(ClimbTypography.micro)
+                                    .foregroundColor(.climbStone)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundColor(.climbCaution)
+                        Text("Weather data unavailable")
+                            .font(ClimbTypography.body)
+                            .foregroundColor(.climbStone)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, ClimbSpacing.md)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, ClimbSpacing.md)
             }
+            .padding(ClimbSpacing.md)
+            .background(Color.white)
+            .cornerRadius(ClimbRadius.large)
+            .climbCardShadow()
         }
-        .padding(ClimbSpacing.md)
-        .background(Color.white)
-        .cornerRadius(ClimbRadius.large)
-        .climbCardShadow()
+        .buttonStyle(PlainButtonStyle())
     }
 
     private func precipitationGauge(value: Double) -> some View {
-        VStack(spacing: ClimbSpacing.sm) {
+        let displayValue = useImperialUnits ? mmToInches(value) : value
+        let unitLabel = useImperialUnits ? "in" : "mm"
+        let formatString = useImperialUnits ? "%.2f" : "%.1f"
+
+        return VStack(spacing: ClimbSpacing.sm) {
             // Circular gauge
             ZStack {
                 Circle()
@@ -228,10 +264,10 @@ struct CragDetailView: View {
             }
 
             VStack(spacing: 2) {
-                Text("\(String(format: "%.1f", value))")
+                Text("\(String(format: formatString, displayValue))")
                     .font(ClimbTypography.title3)
                     .foregroundColor(.climbGranite)
-                Text("mm / 7 days")
+                Text("\(unitLabel) / 7 days")
                     .font(ClimbTypography.micro)
                     .foregroundColor(.climbStone)
             }
@@ -536,18 +572,36 @@ struct CragDetailView: View {
     private var forecastCard: some View {
         VStack(alignment: .leading, spacing: ClimbSpacing.md) {
             HStack {
-                Image(systemName: "calendar")
+                // Unit toggle
+                Menu {
+                    Button(action: { useImperialUnits = true }) {
+                        Label("Imperial (°F, in)", systemImage: useImperialUnits ? "checkmark" : "")
+                    }
+                    Button(action: { useImperialUnits = false }) {
+                        Label("Metric (°C, mm)", systemImage: useImperialUnits ? "" : "checkmark")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(useImperialUnits ? "°F / in" : "°C / mm")
+                            .font(ClimbTypography.captionBold)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10))
+                    }
                     .foregroundColor(.climbRope)
-                Text("7-Day Forecast")
-                    .font(ClimbTypography.bodyBold)
-                    .foregroundColor(.climbGranite)
+                    .padding(.horizontal, ClimbSpacing.sm)
+                    .padding(.vertical, ClimbSpacing.xs)
+                    .background(Color.climbRope.opacity(0.1))
+                    .cornerRadius(ClimbRadius.small)
+                }
 
                 Spacer()
 
-                if isLoadingForecast {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                }
+                Text("Scroll for more")
+                    .font(ClimbTypography.micro)
+                    .foregroundColor(.climbStone)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.climbStone)
             }
 
             if let forecast = forecast {
@@ -610,9 +664,10 @@ struct CragDetailView: View {
                 .foregroundColor(weatherIconColor(for: day))
                 .frame(height: 24)
 
-            // Temperature
+            // Temperature (with unit conversion)
             if let high = day.tempHighC {
-                Text("\(Int(high))°")
+                let displayTemp = useImperialUnits ? celsiusToFahrenheit(high) : high
+                Text("\(Int(displayTemp))°")
                     .font(ClimbTypography.micro)
                     .foregroundColor(.climbStone)
             }
@@ -622,21 +677,34 @@ struct CragDetailView: View {
                 .fill(statusColor(for: day.predictedStatus))
                 .frame(width: 12, height: 12)
 
-            // Precipitation
+            // Precipitation (with unit conversion)
+            let displayPrecip = useImperialUnits ? mmToInches(day.precipitationMm) : day.precipitationMm
+            let precipUnit = useImperialUnits ? "in" : "mm"
+            let precipFormat = useImperialUnits ? "%.2f" : "%.1f"
             if day.precipitationMm > 0 {
-                Text("\(String(format: "%.1f", day.precipitationMm))mm")
+                Text("\(String(format: precipFormat, displayPrecip))\(precipUnit)")
                     .font(.system(size: 9))
                     .foregroundColor(.climbRope)
             } else {
-                Text("0mm")
+                Text("0\(precipUnit)")
                     .font(.system(size: 9))
                     .foregroundColor(.climbStone.opacity(0.5))
             }
         }
-        .frame(width: 50)
+        .frame(width: 44)
         .padding(.vertical, ClimbSpacing.sm)
         .background(statusColor(for: day.predictedStatus).opacity(0.05))
         .cornerRadius(ClimbRadius.small)
+    }
+
+    // MARK: - Unit Conversions
+
+    private func celsiusToFahrenheit(_ celsius: Double) -> Double {
+        celsius * 9 / 5 + 32
+    }
+
+    private func mmToInches(_ mm: Double) -> Double {
+        mm / 25.4
     }
 
     private func weatherIconColor(for day: DayForecast) -> Color {
@@ -660,7 +728,7 @@ struct CragDetailView: View {
         defer { isLoadingForecast = false }
 
         do {
-            forecast = try await APIClient.shared.getForecast(cragId: crag.id)
+            forecast = try await APIClient.shared.getForecast(cragId: crag.id, days: 14)
         } catch {
             print("Error loading forecast: \(error)")
         }
