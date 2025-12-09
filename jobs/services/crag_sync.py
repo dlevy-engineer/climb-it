@@ -191,7 +191,6 @@ class CragSyncService:
                     "latitude": area.latitude,
                     "longitude": area.longitude,
                     "location_hierarchy_json": build_location_hierarchy(area.path or []),
-                    "mp_id": str(area.id) if area.id else None,
                     "safety_status": "CAUTION",  # Default until weather is fetched
                     "last_synced_at": datetime.utcnow(),
                 }
@@ -244,7 +243,6 @@ class CragSyncService:
                     latitude=area.latitude,
                     longitude=area.longitude,
                     location_hierarchy_json=build_location_hierarchy(area.path or []),
-                    mp_id=str(area.id) if area.id else None,
                     safety_status="CAUTION",
                     last_synced_at=datetime.utcnow(),
                 )

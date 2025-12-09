@@ -30,7 +30,6 @@ class Crag(Base):
         nullable=False,
         default=SafetyStatus.CAUTION
     )
-    mp_id = Column(String(20), nullable=True, unique=True)  # Mountain Project ID
     last_synced_at = Column(TIMESTAMP, nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
     updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -43,7 +42,6 @@ class Crag(Base):
 
     __table_args__ = (
         Index("idx_crag_location", "latitude", "longitude"),
-        Index("idx_crag_mp_id", "mp_id"),
     )
 
 
