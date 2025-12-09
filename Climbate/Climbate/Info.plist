@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>CLIMB.it</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CLIMB.it uses your location to find climbing areas near you and show weather conditions for nearby crags.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
