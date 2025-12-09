@@ -51,16 +51,9 @@ struct CragDetailView: View {
                 detailedCrag = await cragStore.refreshCragDetails(crag)
             }
         }
+        .navigationTitle("Crag Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(displayCrag.name)
-                        .font(ClimbTypography.bodyBold)
-                        .foregroundColor(.climbGranite)
-                        .lineLimit(1)
-                }
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: { cragStore.toggle(displayCrag) }) {
                     Image(systemName: cragStore.isSaved(displayCrag) ? "bookmark.fill" : "bookmark")
