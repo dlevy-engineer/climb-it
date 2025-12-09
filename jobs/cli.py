@@ -169,6 +169,40 @@ def init_db():
 
 
 @cli.command()
+def clear_crags():
+    """Clear all crags and weather data from the database."""
+    from db.database import get_session
+    from sqlalchemy import text
+
+    log.info("Clearing all crags and weather data")
+
+    session = get_session()
+    try:
+        # Count existing crags
+        count = session.execute(text('SELECT COUNT(*) FROM ods_crags')).scalar()
+        log.info("current_crag_count", count=count)
+
+        # Clear the weather data first (foreign key constraint)
+        session.execute(text('DELETE FROM ods_weather'))
+        log.info("cleared_weather_data")
+
+        # Then clear crags
+        session.execute(text('DELETE FROM ods_crags'))
+        session.commit()
+        log.info("cleared_all_crags")
+
+        # Verify
+        count = session.execute(text('SELECT COUNT(*) FROM ods_crags')).scalar()
+        log.info("crag_count_after_clear", count=count)
+    except Exception as e:
+        session.rollback()
+        log.error("clear_failed", error=str(e))
+        raise
+    finally:
+        session.close()
+
+
+@cli.command()
 def add_unknown_status():
     """Add UNKNOWN to the safety_status enum."""
     from db.database import get_session
