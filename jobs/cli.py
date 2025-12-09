@@ -194,5 +194,41 @@ def add_unknown_status():
         session.close()
 
 
+@cli.command()
+def add_temp_columns():
+    """Add temperature columns to precipitation table."""
+    from db.database import get_session
+    from sqlalchemy import text
+
+    log.info("Adding temperature columns to ods_precipitation")
+
+    session = get_session()
+    try:
+        # Check if columns exist
+        result = session.execute(text("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'ods_precipitation' AND COLUMN_NAME = 'temperature_max_c'
+        """))
+        if result.scalar():
+            log.info("temperature_max_c already exists")
+            return
+
+        # Add the columns
+        session.execute(text("""
+            ALTER TABLE ods_precipitation
+            ADD COLUMN temperature_max_c DECIMAL(4,1) NULL,
+            ADD COLUMN temperature_min_c DECIMAL(4,1) NULL
+        """))
+        session.commit()
+        log.info("Successfully added temperature columns")
+    except Exception as e:
+        session.rollback()
+        log.error("Failed to add temperature columns", error=str(e))
+        raise
+    finally:
+        session.close()
+
+
 if __name__ == "__main__":
     cli()
