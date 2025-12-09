@@ -438,25 +438,29 @@ struct CragDetailView: View {
                 cragStore.toggle(displayCrag)
             }
 
-            actionButton(
-                icon: "arrow.clockwise",
-                filledIcon: "arrow.clockwise",
-                label: "Refresh",
-                isActive: false
-            ) {
-                Task {
-                    detailedCrag = await cragStore.refreshCragDetails(crag)
-                }
-            }
+            shareButton
+        }
+    }
 
-            actionButton(
-                icon: "square.and.arrow.up",
-                filledIcon: "square.and.arrow.up.fill",
-                label: "Share",
-                isActive: false
-            ) {
-                // Share functionality
+    private var shareButton: some View {
+        let shareText = "\(displayCrag.name) - \(displayCrag.safetyStatus.displayName)\n\nCheck conditions on CLIMB.it"
+        let shareURL = displayCrag.mountainProjectUrl.flatMap { URL(string: $0) }
+
+        return ShareLink(item: shareURL ?? googleMapsURL, subject: Text(displayCrag.name), message: Text(shareText)) {
+            VStack(spacing: ClimbSpacing.sm) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.title2)
+                    .foregroundColor(.climbRope)
+
+                Text("Share")
+                    .font(ClimbTypography.micro)
+                    .foregroundColor(.climbStone)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, ClimbSpacing.md)
+            .background(Color.white)
+            .cornerRadius(ClimbRadius.medium)
+            .climbSubtleShadow()
         }
     }
 
