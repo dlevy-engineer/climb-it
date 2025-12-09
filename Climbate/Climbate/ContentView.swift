@@ -74,6 +74,7 @@ struct DiscoverTab: View {
         case .safe: return searchResults.filter { $0.safetyStatus == .safe }
         case .caution: return searchResults.filter { $0.safetyStatus == .caution }
         case .unsafe: return searchResults.filter { $0.safetyStatus == .unsafe }
+        case .unknown: return searchResults.filter { $0.safetyStatus == .unknown }
         }
     }
 
@@ -182,6 +183,7 @@ struct DiscoverTab: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 

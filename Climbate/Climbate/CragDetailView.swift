@@ -122,6 +122,7 @@ struct CragDetailView: View {
         case .safe: return "checkmark"
         case .caution: return "exclamationmark"
         case .unsafe: return "xmark"
+        case .unknown: return "questionmark"
         }
     }
 
@@ -130,6 +131,7 @@ struct CragDetailView: View {
         case .safe: return "Good to climb"
         case .caution: return "Check conditions"
         case .unsafe: return "Rock may be wet"
+        case .unknown: return "No weather data"
         }
     }
 
@@ -138,6 +140,7 @@ struct CragDetailView: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 
@@ -286,6 +289,8 @@ struct CragDetailView: View {
             cautionMessage
         case .safe:
             safeMessage
+        case .unknown:
+            unknownMessage
         }
     }
 
@@ -356,6 +361,22 @@ struct CragDetailView: View {
                     .font(ClimbTypography.body)
                     .foregroundColor(.climbGranite)
             }
+        }
+    }
+
+    private var unknownMessage: some View {
+        VStack(alignment: .leading, spacing: ClimbSpacing.sm) {
+            HStack {
+                Image(systemName: "questionmark.circle.fill")
+                    .foregroundColor(.climbUnknown)
+                Text("No Weather Data")
+                    .font(ClimbTypography.bodyBold)
+                    .foregroundColor(.climbUnknown)
+            }
+
+            Text("Weather data is not yet available for this area. Check local conditions before climbing.")
+                .font(ClimbTypography.body)
+                .foregroundColor(.climbGranite)
         }
     }
 
