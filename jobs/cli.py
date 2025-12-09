@@ -156,5 +156,43 @@ def init_db():
     log.info("Database initialized")
 
 
+@cli.command()
+def add_unknown_status():
+    """Add UNKNOWN to the safety_status enum."""
+    from db.database import get_session
+    from sqlalchemy import text
+
+    log.info("Adding UNKNOWN to safety_status enum")
+
+    session = get_session()
+    try:
+        # Check current enum values
+        result = session.execute(text("""
+            SELECT COLUMN_TYPE
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'ods_crags' AND COLUMN_NAME = 'safety_status'
+        """))
+        current_type = result.scalar()
+        log.info("Current column type", type=current_type)
+
+        if current_type and 'UNKNOWN' in current_type:
+            log.info("UNKNOWN already exists in enum")
+            return
+
+        # Alter the enum to add UNKNOWN
+        session.execute(text("""
+            ALTER TABLE ods_crags
+            MODIFY COLUMN safety_status ENUM('SAFE', 'CAUTION', 'UNSAFE', 'UNKNOWN') NOT NULL
+        """))
+        session.commit()
+        log.info("Successfully added UNKNOWN to safety_status enum")
+    except Exception as e:
+        session.rollback()
+        log.error("Failed to add UNKNOWN to enum", error=str(e))
+        raise
+    finally:
+        session.close()
+
+
 if __name__ == "__main__":
     cli()
