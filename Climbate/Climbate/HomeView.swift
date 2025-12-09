@@ -7,9 +7,48 @@
 
 import SwiftUI
 
+// MARK: - Sort Order
+
+enum CragSortOrder: String, CaseIterable {
+    case status = "Status"
+    case name = "Name"
+    case location = "Location"
+
+    var icon: String {
+        switch self {
+        case .status: return "circle.lefthalf.filled"
+        case .name: return "textformat"
+        case .location: return "mappin"
+        }
+    }
+}
+
 struct HomeView: View {
     @EnvironmentObject var cragStore: CragStore
     @State private var showingSearchView = false
+    @AppStorage("cragSortOrder") private var sortOrder: CragSortOrder = .status
+
+    // MARK: - Sorted Crags
+
+    private var sortedCrags: [Crag] {
+        switch sortOrder {
+        case .status:
+            // Safe first, then Caution, then Unsafe
+            return cragStore.savedCrags.sorted { crag1, crag2 in
+                let order: [Crag.SafetyStatus] = [.safe, .caution, .unsafe]
+                let index1 = order.firstIndex(of: crag1.safetyStatus) ?? 0
+                let index2 = order.firstIndex(of: crag2.safetyStatus) ?? 0
+                if index1 != index2 {
+                    return index1 < index2
+                }
+                return crag1.name < crag2.name
+            }
+        case .name:
+            return cragStore.savedCrags.sorted { $0.name < $1.name }
+        case .location:
+            return cragStore.savedCrags.sorted { $0.location < $1.location }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -26,6 +65,30 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Menu {
+                        ForEach(CragSortOrder.allCases, id: \.self) { order in
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    sortOrder = order
+                                }
+                            }) {
+                                Label(order.rawValue, systemImage: order.icon)
+                                if sortOrder == order {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.subheadline)
+                            Text(sortOrder.rawValue)
+                                .font(ClimbTypography.caption)
+                        }
+                        .foregroundColor(.climbRope)
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     ClimbLogo(size: .small)
                 }
@@ -105,7 +168,7 @@ struct HomeView: View {
 
                 // Crag cards
                 LazyVStack(spacing: ClimbSpacing.md) {
-                    ForEach(cragStore.savedCrags) { crag in
+                    ForEach(sortedCrags) { crag in
                         NavigationLink(destination: CragDetailView(crag: crag)) {
                             CragCard(crag: crag)
                         }
@@ -281,7 +344,12 @@ struct CragRowView: View {
 
 #Preview("With Crags") {
     let store = CragStore()
-    store.savedCrags = [.preview, .previewUnsafe]
+    store.savedCrags = [
+        .preview,
+        .previewUnsafe,
+        Crag(name: "Bishop", location: "California > Eastern Sierra", safetyStatus: .safe),
+        Crag(name: "Joshua Tree", location: "California > High Desert", safetyStatus: .caution)
+    ]
     return HomeView()
         .environmentObject(store)
 }
