@@ -2,7 +2,6 @@
 from sqlalchemy import Column, String, DECIMAL, JSON, Enum, TIMESTAMP, ForeignKey, Index
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import relationship
-from datetime import datetime
 import enum
 
 from .database import Base
@@ -30,9 +29,6 @@ class Crag(Base):
         nullable=False,
         default=SafetyStatus.CAUTION
     )
-    last_synced_at = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     precipitation_records = relationship(
         "Precipitation",

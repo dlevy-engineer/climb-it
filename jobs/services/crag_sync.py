@@ -2,7 +2,6 @@
 import uuid
 import time
 import structlog
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.dialects.mysql import insert
@@ -192,7 +191,6 @@ class CragSyncService:
                     "longitude": area.longitude,
                     "location_hierarchy_json": build_location_hierarchy(area.path or []),
                     "safety_status": "CAUTION",  # Default until weather is fetched
-                    "last_synced_at": datetime.utcnow(),
                 }
 
                 stmt = insert(Crag).values(**record)
@@ -201,7 +199,6 @@ class CragSyncService:
                     latitude=stmt.inserted.latitude,
                     longitude=stmt.inserted.longitude,
                     location_hierarchy_json=stmt.inserted.location_hierarchy_json,
-                    last_synced_at=stmt.inserted.last_synced_at,
                 )
 
                 session.execute(upsert_stmt)
@@ -234,7 +231,6 @@ class CragSyncService:
                 crag.latitude = area.latitude
                 crag.longitude = area.longitude
                 crag.location_hierarchy_json = build_location_hierarchy(area.path or [])
-                crag.last_synced_at = datetime.utcnow()
             else:
                 crag = Crag(
                     id=crag_id,
@@ -244,7 +240,6 @@ class CragSyncService:
                     longitude=area.longitude,
                     location_hierarchy_json=build_location_hierarchy(area.path or []),
                     safety_status="CAUTION",
-                    last_synced_at=datetime.utcnow(),
                 )
                 session.add(crag)
 
