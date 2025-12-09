@@ -19,7 +19,10 @@ def format_location(hierarchy: dict | None) -> str:
     current = hierarchy
     while current:
         if "name" in current:
-            parts.append(current["name"])
+            name = current["name"]
+            # Skip "All Locations" prefix
+            if name != "All Locations":
+                parts.append(name)
         current = current.get("child")
 
     return " > ".join(parts) if parts else "Unknown"
