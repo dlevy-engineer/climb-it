@@ -27,6 +27,8 @@ def clean_area_name(name: str) -> str:
     """Clean up area names by removing special characters and numbering prefixes."""
     # Remove numbering prefixes like "00. ", "01. ", "1. ", etc.
     name = re.sub(r'^\d+\.\s*', '', name)
+    # Remove leading "- " (dash space) prefix
+    name = re.sub(r'^-\s*', '', name)
     # Remove asterisks
     name = name.replace('*', '')
     # Remove smart quotes and regular quotes
@@ -191,7 +193,7 @@ class OpenBetaSyncService:
                 record = {
                     "id": crag_id,
                     "url": area.url,
-                    "name": area.name,
+                    "name": clean_area_name(area.name),
                     "latitude": area.latitude,
                     "longitude": area.longitude,
                     "location_hierarchy_json": build_location_hierarchy(area.path or []),
