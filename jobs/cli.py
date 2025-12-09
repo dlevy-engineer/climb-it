@@ -49,15 +49,20 @@ def cli(verbose):
 
 @cli.command()
 @click.option("--max-areas", "-m", type=int, default=None, help="Max areas to process")
-def sync_crags(max_areas):
-    """Sync crags from Mountain Project."""
-    from services import CragSyncService
-
-    log.info("Starting crag sync", max_areas=max_areas)
+@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="openbeta", help="Data source")
+def sync_crags(max_areas, source):
+    """Sync crags from Mountain Project or OpenBeta."""
+    log.info("Starting crag sync", max_areas=max_areas, source=source)
     start = datetime.now()
 
-    with CragSyncService() as service:
-        stats = service.sync_all(max_areas=max_areas)
+    if source == "openbeta":
+        from services.openbeta_sync import OpenBetaSyncService
+        with OpenBetaSyncService() as service:
+            stats = service.sync_all(max_areas=max_areas)
+    else:
+        from services import CragSyncService
+        with CragSyncService() as service:
+            stats = service.sync_all(max_areas=max_areas)
 
     elapsed = (datetime.now() - start).total_seconds()
     log.info("Crag sync complete", elapsed_seconds=elapsed, **stats)
@@ -98,17 +103,24 @@ def calculate_safety():
 @cli.command()
 @click.option("--max-areas", "-m", type=int, default=None, help="Max areas to process (crag sync)")
 @click.option("--days", "-d", type=int, default=14, help="Days of weather history")
-def run_all(max_areas, days):
+@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="openbeta", help="Data source for crags")
+def run_all(max_areas, days, source):
     """Run full sync: crags -> weather -> safety calculation."""
-    from services import CragSyncService, WeatherSyncService, SafetyCalculator
+    from services import WeatherSyncService, SafetyCalculator
 
-    log.info("Starting full sync pipeline")
+    log.info("Starting full sync pipeline", source=source)
     pipeline_start = datetime.now()
 
     # Step 1: Sync crags
-    log.info("Step 1/3: Syncing crags from Mountain Project")
-    with CragSyncService() as service:
-        crag_stats = service.sync_all(max_areas=max_areas)
+    log.info("Step 1/3: Syncing crags", source=source)
+    if source == "openbeta":
+        from services.openbeta_sync import OpenBetaSyncService
+        with OpenBetaSyncService() as service:
+            crag_stats = service.sync_all(max_areas=max_areas)
+    else:
+        from services import CragSyncService
+        with CragSyncService() as service:
+            crag_stats = service.sync_all(max_areas=max_areas)
     log.info("Crag sync done", **crag_stats)
 
     # Step 2: Sync weather

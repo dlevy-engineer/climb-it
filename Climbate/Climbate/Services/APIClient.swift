@@ -35,7 +35,7 @@ class APIClient {
     // MARK: - Public API
 
     /// Fetch all crags with optional pagination
-    func fetchCrags(page: Int = 1, perPage: Int = 50) async throws -> [Crag] {
+    func fetchCrags(page: Int = 1, perPage: Int = 1000) async throws -> [Crag] {
         var components = URLComponents(url: baseURL.appendingPathComponent("crags"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "page", value: String(page)),
@@ -43,6 +43,26 @@ class APIClient {
         ]
 
         return try await fetch(from: components.url!)
+    }
+
+    /// Fetch ALL crags by paginating through all pages
+    func fetchAllCrags() async throws -> [Crag] {
+        var allCrags: [Crag] = []
+        var page = 1
+        let perPage = 500
+
+        while true {
+            let crags = try await fetchCrags(page: page, perPage: perPage)
+            allCrags.append(contentsOf: crags)
+
+            // If we got fewer results than requested, we've reached the end
+            if crags.count < perPage {
+                break
+            }
+            page += 1
+        }
+
+        return allCrags
     }
 
     /// Search crags by name or location

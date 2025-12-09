@@ -54,7 +54,7 @@ def crag_to_response(crag: ODSCrag) -> CragResponse:
 @router.get("", response_model=list[CragResponse])
 def list_crags(
     page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(50, ge=1, le=100, description="Items per page"),
+    per_page: int = Query(100, ge=1, le=1000, description="Items per page"),
     db: Session = Depends(get_db),
 ):
     """List all crags with pagination"""

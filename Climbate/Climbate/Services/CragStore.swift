@@ -60,7 +60,9 @@ class CragStore: ObservableObject {
         defer { isLoading = false }
 
         do {
-            return try await apiClient.fetchCrags()
+            let crags = try await apiClient.fetchAllCrags()
+            print("Fetched \(crags.count) total crags")
+            return crags
         } catch {
             self.error = error.localizedDescription
             print("Error fetching crags: \(error)")
