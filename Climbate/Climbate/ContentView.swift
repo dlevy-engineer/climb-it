@@ -209,9 +209,9 @@ struct DiscoverTab: View {
 
     private func toggleButton(icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: isSelected ? icon + ".fill" : icon)
+            Image(systemName: icon)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(isSelected ? .white : .climbStone)
+                .foregroundColor(isSelected ? .white : .climbGranite)
                 .frame(width: 36, height: 32)
                 .background(isSelected ? Color.climbRope : Color.clear)
                 .cornerRadius(ClimbRadius.small)
