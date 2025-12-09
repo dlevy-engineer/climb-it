@@ -68,6 +68,9 @@ struct ForecastView: View {
         }
         .navigationTitle("14-Day Forecast")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.climbChalk, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 unitToggle
