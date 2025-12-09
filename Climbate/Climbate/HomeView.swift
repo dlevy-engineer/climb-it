@@ -33,11 +33,11 @@ struct HomeView: View {
     private var sortedCrags: [Crag] {
         switch sortOrder {
         case .status:
-            // Safe first, then Caution, then Unsafe
+            // Safe first, then Caution, then Unsafe, then Unknown
             return cragStore.savedCrags.sorted { crag1, crag2 in
-                let order: [Crag.SafetyStatus] = [.safe, .caution, .unsafe]
-                let index1 = order.firstIndex(of: crag1.safetyStatus) ?? 0
-                let index2 = order.firstIndex(of: crag2.safetyStatus) ?? 0
+                let order: [Crag.SafetyStatus] = [.safe, .caution, .unsafe, .unknown]
+                let index1 = order.firstIndex(of: crag1.safetyStatus) ?? order.count
+                let index2 = order.firstIndex(of: crag2.safetyStatus) ?? order.count
                 if index1 != index2 {
                     return index1 < index2
                 }
@@ -47,6 +47,14 @@ struct HomeView: View {
             return cragStore.savedCrags.sorted { $0.name < $1.name }
         case .location:
             return cragStore.savedCrags.sorted { $0.location < $1.location }
+        }
+    }
+
+    /// Groups crags by state, sorted alphabetically by state name
+    private var groupedCrags: [(state: String, crags: [Crag])] {
+        let grouped = Dictionary(grouping: sortedCrags) { $0.state }
+        return grouped.keys.sorted().map { state in
+            (state: state, crags: grouped[state] ?? [])
         }
     }
 
@@ -166,13 +174,19 @@ struct HomeView: View {
                 statusSummary
                     .padding(.horizontal, ClimbSpacing.md)
 
-                // Crag cards
-                LazyVStack(spacing: ClimbSpacing.md) {
-                    ForEach(sortedCrags) { crag in
-                        NavigationLink(destination: CragDetailView(crag: crag)) {
-                            CragCard(crag: crag)
+                // Crag cards grouped by state
+                LazyVStack(spacing: ClimbSpacing.lg, pinnedViews: .sectionHeaders) {
+                    ForEach(groupedCrags, id: \.state) { group in
+                        Section {
+                            ForEach(group.crags) { crag in
+                                NavigationLink(destination: CragDetailView(crag: crag)) {
+                                    CragCard(crag: crag)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        } header: {
+                            StateHeader(state: group.state, count: group.crags.count)
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, ClimbSpacing.md)
@@ -201,6 +215,13 @@ struct HomeView: View {
                 label: "Unsafe",
                 color: .climbUnsafe
             )
+            if unknownCrags.count > 0 {
+                statusPill(
+                    count: unknownCrags.count,
+                    label: "Unknown",
+                    color: .climbUnknown
+                )
+            }
         }
     }
 
@@ -231,6 +252,10 @@ struct HomeView: View {
 
     private var unsafeCrags: [Crag] {
         cragStore.savedCrags.filter { $0.safetyStatus == .unsafe }
+    }
+
+    private var unknownCrags: [Crag] {
+        cragStore.savedCrags.filter { $0.safetyStatus == .unknown }
     }
 }
 
@@ -320,7 +345,36 @@ struct CragCard: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
+    }
+}
+
+// MARK: - State Header
+
+struct StateHeader: View {
+    let state: String
+    let count: Int
+
+    var body: some View {
+        HStack {
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: 16))
+                .foregroundColor(.climbSandstone)
+
+            Text(state)
+                .font(ClimbTypography.title3)
+                .foregroundColor(.climbGranite)
+
+            Text("(\(count))")
+                .font(ClimbTypography.caption)
+                .foregroundColor(.climbStone)
+
+            Spacer()
+        }
+        .padding(.vertical, ClimbSpacing.sm)
+        .padding(.horizontal, ClimbSpacing.xs)
+        .background(Color.climbChalk)
     }
 }
 

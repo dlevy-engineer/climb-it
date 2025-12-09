@@ -190,7 +190,7 @@ class CragSyncService:
                     "latitude": area.latitude,
                     "longitude": area.longitude,
                     "location_hierarchy_json": build_location_hierarchy(area.path or []),
-                    "safety_status": "CAUTION",  # Default until weather is fetched
+                    "safety_status": "UNKNOWN",  # Default until weather is fetched
                 }
 
                 stmt = insert(Crag).values(**record)
@@ -239,7 +239,7 @@ class CragSyncService:
                     latitude=area.latitude,
                     longitude=area.longitude,
                     location_hierarchy_json=build_location_hierarchy(area.path or []),
-                    safety_status="CAUTION",
+                    safety_status="UNKNOWN",
                 )
                 session.add(crag)
 

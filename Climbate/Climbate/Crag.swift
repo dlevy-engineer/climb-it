@@ -22,12 +22,14 @@ struct Crag: Identifiable, Codable, Equatable {
         case safe = "SAFE"
         case caution = "CAUTION"
         case unsafe = "UNSAFE"
+        case unknown = "UNKNOWN"
 
         var displayName: String {
             switch self {
             case .safe: return "Safe"
             case .caution: return "Caution"
             case .unsafe: return "Unsafe"
+            case .unknown: return "Unknown"
             }
         }
     }
@@ -98,6 +100,11 @@ struct Crag: Identifiable, Codable, Equatable {
 
     static func == (lhs: Crag, rhs: Crag) -> Bool {
         lhs.id == rhs.id
+    }
+
+    /// Extracts the state/region from the location hierarchy (first component before " > ")
+    var state: String {
+        location.components(separatedBy: " > ").first ?? location
     }
 }
 

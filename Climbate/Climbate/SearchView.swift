@@ -24,6 +24,7 @@ struct SearchView: View {
         case safe = "Safe"
         case caution = "Caution"
         case unsafe = "Unsafe"
+        case unknown = "Unknown"
     }
 
     var filteredResults: [Crag] {
@@ -32,6 +33,7 @@ struct SearchView: View {
         case .safe: return searchResults.filter { $0.safetyStatus == .safe }
         case .caution: return searchResults.filter { $0.safetyStatus == .caution }
         case .unsafe: return searchResults.filter { $0.safetyStatus == .unsafe }
+        case .unknown: return searchResults.filter { $0.safetyStatus == .unknown }
         }
     }
 
@@ -82,11 +84,6 @@ struct SearchView: View {
                         .foregroundColor(.climbRope)
                 }
             }
-            .task {
-                if searchResults.isEmpty && !hasSearched {
-                    await loadInitialCrags()
-                }
-            }
         }
     }
 
@@ -109,7 +106,8 @@ struct SearchView: View {
             if !searchText.isEmpty {
                 Button(action: {
                     searchText = ""
-                    Task { await loadInitialCrags() }
+                    searchResults = []
+                    hasSearched = false
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.climbStone)
@@ -149,6 +147,7 @@ struct SearchView: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 
@@ -213,7 +212,7 @@ struct SearchView: View {
                 .font(ClimbTypography.title2)
                 .foregroundColor(.climbGranite)
 
-            Text("Search for climbing areas or browse\nall available locations")
+            Text("Start typing to search for\nclimbing areas")
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbStone)
                 .multilineTextAlignment(.center)
@@ -270,15 +269,10 @@ struct SearchView: View {
 
     // MARK: - Actions
 
-    private func loadInitialCrags() async {
-        isLoading = true
-        searchResults = await cragStore.fetchAllCrags()
-        isLoading = false
-    }
-
     private func performSearch() async {
         guard !searchText.isEmpty else {
-            await loadInitialCrags()
+            searchResults = []
+            hasSearched = false
             return
         }
 
@@ -356,6 +350,7 @@ struct SearchResultRow: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 }
@@ -412,6 +407,7 @@ struct CragMapPin: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 }

@@ -21,6 +21,7 @@ extension Color {
     static let climbSafe = Color(hex: "00966D")         // Deep green
     static let climbCaution = Color(hex: "D4930D")      // Rich amber
     static let climbUnsafe = Color(hex: "C0392B")       // Bold red
+    static let climbUnknown = Color(hex: "636E72")      // Gray for unknown
 
     // Supporting colors
     static let climbMist = Color(hex: "DFE6E9")         // Light gray for cards
@@ -236,6 +237,7 @@ struct ClimbStatusBadge: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
         }
     }
 

@@ -9,6 +9,7 @@ class SafetyStatus(enum.Enum):
     SAFE = "SAFE"
     CAUTION = "CAUTION"
     UNSAFE = "UNSAFE"
+    UNKNOWN = "UNKNOWN"
 
 
 class ODSCrag(Base):
