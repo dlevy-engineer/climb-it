@@ -77,6 +77,15 @@ class APIClient {
         return try await fetch(from: url)
     }
 
+    /// Get forecast for a crag with daily predicted safety status
+    func getForecast(cragId: String, days: Int = 7) async throws -> CragForecast {
+        var components = URLComponents(url: baseURL.appendingPathComponent("crags/\(cragId)/forecast"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "days", value: String(days))
+        ]
+        return try await fetch(from: components.url!)
+    }
+
     /// Health check
     func healthCheck() async throws -> Bool {
         let url = baseURL.appendingPathComponent("health")

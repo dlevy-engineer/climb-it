@@ -40,3 +40,22 @@ class CragListResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class DayForecastResponse(BaseModel):
+    """Forecast for a single day with predicted safety status."""
+    date: date
+    predicted_status: SafetyStatusEnum = Field(description="Predicted safety status for this day")
+    precipitation_mm: float = Field(description="Expected precipitation in mm")
+    temp_high_c: Optional[float] = Field(default=None, description="High temperature in Celsius")
+    temp_low_c: Optional[float] = Field(default=None, description="Low temperature in Celsius")
+    weather_icon: str = Field(default="sun.max.fill", description="SF Symbol name for weather icon")
+
+
+class ForecastResponse(BaseModel):
+    """7-14 day forecast with predicted safety statuses."""
+    crag_id: str
+    crag_name: str
+    current_status: SafetyStatusEnum
+    estimated_safe_date: Optional[date] = Field(default=None, description="First day predicted to be SAFE")
+    days: list[DayForecastResponse]

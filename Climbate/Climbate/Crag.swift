@@ -101,6 +101,83 @@ struct Crag: Identifiable, Codable, Equatable {
     }
 }
 
+// MARK: - Forecast Models
+
+struct DayForecast: Codable, Identifiable {
+    let date: String
+    let predictedStatus: Crag.SafetyStatus
+    let precipitationMm: Double
+    let tempHighC: Double?
+    let tempLowC: Double?
+    let weatherIcon: String
+
+    var id: String { date }
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case predictedStatus = "predicted_status"
+        case precipitationMm = "precipitation_mm"
+        case tempHighC = "temp_high_c"
+        case tempLowC = "temp_low_c"
+        case weatherIcon = "weather_icon"
+    }
+
+    /// Parse date string to Date object
+    var dateObject: Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: date)
+    }
+
+    /// Day of week abbreviation (Mon, Tue, etc.)
+    var dayOfWeek: String {
+        guard let date = dateObject else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
+    }
+
+    /// Day of month (1, 2, 3...)
+    var dayOfMonth: String {
+        guard let date = dateObject else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter.string(from: date)
+    }
+}
+
+struct CragForecast: Codable {
+    let cragId: String
+    let cragName: String
+    let currentStatus: Crag.SafetyStatus
+    let estimatedSafeDate: String?
+    let days: [DayForecast]
+
+    enum CodingKeys: String, CodingKey {
+        case cragId = "crag_id"
+        case cragName = "crag_name"
+        case currentStatus = "current_status"
+        case estimatedSafeDate = "estimated_safe_date"
+        case days
+    }
+
+    /// Parse estimated safe date to Date object
+    var estimatedSafeDateObject: Date? {
+        guard let dateStr = estimatedSafeDate else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: dateStr)
+    }
+
+    /// Friendly string for estimated safe date
+    var estimatedSafeDateFormatted: String? {
+        guard let date = estimatedSafeDateObject else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        return formatter.string(from: date)
+    }
+}
+
 // MARK: - Preview Helpers
 
 extension Crag {

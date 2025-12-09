@@ -12,6 +12,8 @@ struct CragDetailView: View {
     let crag: Crag
     @EnvironmentObject var cragStore: CragStore
     @State private var detailedCrag: Crag?
+    @State private var forecast: CragForecast?
+    @State private var isLoadingForecast = false
 
     var displayCrag: Crag {
         detailedCrag ?? crag
@@ -35,6 +37,9 @@ struct CragDetailView: View {
 
                         // Weather card
                         weatherCard
+
+                        // Forecast calendar
+                        forecastCard
 
                         // Quick actions
                         actionsCard
@@ -66,7 +71,11 @@ struct CragDetailView: View {
             }
         }
         .task {
-            detailedCrag = await cragStore.refreshCragDetails(crag)
+            async let cragTask = cragStore.refreshCragDetails(crag)
+            async let forecastTask = loadForecast()
+
+            detailedCrag = await cragTask
+            _ = await forecastTask
         }
     }
 
@@ -519,6 +528,141 @@ struct CragDetailView: View {
             .background(Color.white)
             .cornerRadius(ClimbRadius.medium)
             .climbSubtleShadow()
+        }
+    }
+
+    // MARK: - Forecast Card
+
+    private var forecastCard: some View {
+        VStack(alignment: .leading, spacing: ClimbSpacing.md) {
+            HStack {
+                Image(systemName: "calendar")
+                    .foregroundColor(.climbRope)
+                Text("7-Day Forecast")
+                    .font(ClimbTypography.bodyBold)
+                    .foregroundColor(.climbGranite)
+
+                Spacer()
+
+                if isLoadingForecast {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+
+            if let forecast = forecast {
+                // Estimated safe date banner
+                if displayCrag.safetyStatus != .safe, let safeDate = forecast.estimatedSafeDateFormatted {
+                    HStack(spacing: ClimbSpacing.sm) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.climbSafe)
+                        Text("Expected safe: \(safeDate)")
+                            .font(ClimbTypography.captionBold)
+                            .foregroundColor(.climbSafe)
+                    }
+                    .padding(ClimbSpacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.climbSafe.opacity(0.1))
+                    .cornerRadius(ClimbRadius.small)
+                }
+
+                // Calendar grid
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: ClimbSpacing.sm) {
+                        ForEach(forecast.days) { day in
+                            forecastDayCell(day: day)
+                        }
+                    }
+                }
+            } else if !isLoadingForecast {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundColor(.climbCaution)
+                    Text("Forecast unavailable")
+                        .font(ClimbTypography.body)
+                        .foregroundColor(.climbStone)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, ClimbSpacing.md)
+            }
+        }
+        .padding(ClimbSpacing.md)
+        .background(Color.white)
+        .cornerRadius(ClimbRadius.large)
+        .climbCardShadow()
+    }
+
+    private func forecastDayCell(day: DayForecast) -> some View {
+        VStack(spacing: ClimbSpacing.xs) {
+            // Day name
+            Text(day.dayOfWeek)
+                .font(ClimbTypography.micro)
+                .foregroundColor(.climbStone)
+
+            // Day number
+            Text(day.dayOfMonth)
+                .font(ClimbTypography.captionBold)
+                .foregroundColor(.climbGranite)
+
+            // Weather icon
+            Image(systemName: day.weatherIcon)
+                .font(.system(size: 20))
+                .foregroundColor(weatherIconColor(for: day))
+                .frame(height: 24)
+
+            // Temperature
+            if let high = day.tempHighC {
+                Text("\(Int(high))°")
+                    .font(ClimbTypography.micro)
+                    .foregroundColor(.climbStone)
+            }
+
+            // Status indicator dot
+            Circle()
+                .fill(statusColor(for: day.predictedStatus))
+                .frame(width: 12, height: 12)
+
+            // Precipitation
+            if day.precipitationMm > 0 {
+                Text("\(String(format: "%.1f", day.precipitationMm))mm")
+                    .font(.system(size: 9))
+                    .foregroundColor(.climbRope)
+            } else {
+                Text("0mm")
+                    .font(.system(size: 9))
+                    .foregroundColor(.climbStone.opacity(0.5))
+            }
+        }
+        .frame(width: 50)
+        .padding(.vertical, ClimbSpacing.sm)
+        .background(statusColor(for: day.predictedStatus).opacity(0.05))
+        .cornerRadius(ClimbRadius.small)
+    }
+
+    private func weatherIconColor(for day: DayForecast) -> Color {
+        if day.precipitationMm > 1 {
+            return .climbRope
+        }
+        return .climbSandstone
+    }
+
+    private func statusColor(for status: Crag.SafetyStatus) -> Color {
+        switch status {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        case .unknown: return .climbUnknown
+        }
+    }
+
+    private func loadForecast() async {
+        isLoadingForecast = true
+        defer { isLoadingForecast = false }
+
+        do {
+            forecast = try await APIClient.shared.getForecast(cragId: crag.id)
+        } catch {
+            print("Error loading forecast: \(error)")
         }
     }
 

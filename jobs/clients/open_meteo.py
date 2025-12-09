@@ -144,3 +144,61 @@ class OpenMeteoClient:
                 break
 
         return total_mm, last_rain_date, days_since_rain
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def get_forecast(
+        self,
+        latitude: float,
+        longitude: float,
+        days: int = 7,
+    ) -> list[DailyWeather]:
+        """
+        Get weather forecast for a location.
+
+        Uses the Open-Meteo Forecast API (not historical).
+        https://open-meteo.com/en/docs
+
+        Args:
+            latitude: Location latitude
+            longitude: Location longitude
+            days: Number of forecast days (1-16)
+
+        Returns:
+            List of DailyWeather objects for upcoming days
+        """
+        forecast_url = "https://api.open-meteo.com/v1/forecast"
+
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "daily": "precipitation_sum,temperature_2m_max,temperature_2m_min,precipitation_hours",
+            "timezone": "auto",
+            "forecast_days": min(days, 16),  # API max is 16 days
+        }
+
+        log.debug("forecast_api_request", lat=latitude, lon=longitude, days=days)
+
+        response = self.client.get(forecast_url, params=params)
+        response.raise_for_status()
+
+        data = response.json()
+        daily = data.get("daily", {})
+
+        dates = daily.get("time", [])
+        precip = daily.get("precipitation_sum", [])
+        temp_max = daily.get("temperature_2m_max", [])
+        temp_min = daily.get("temperature_2m_min", [])
+        precip_hours = daily.get("precipitation_hours", [])
+
+        results = []
+        for i, date_str in enumerate(dates):
+            results.append(DailyWeather(
+                date=datetime.fromisoformat(date_str).date(),
+                precipitation_mm=precip[i] if i < len(precip) and precip[i] is not None else 0.0,
+                temperature_max_c=temp_max[i] if i < len(temp_max) else None,
+                temperature_min_c=temp_min[i] if i < len(temp_min) else None,
+                precipitation_hours=precip_hours[i] if i < len(precip_hours) else None,
+            ))
+
+        log.info("forecast_fetched", lat=latitude, lon=longitude, days=len(results))
+        return results
