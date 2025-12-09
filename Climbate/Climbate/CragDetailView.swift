@@ -78,6 +78,20 @@ struct CragDetailView: View {
 
     private var heroHeader: some View {
         VStack(spacing: ClimbSpacing.md) {
+            // Crag name - prominent
+            Text(displayCrag.name)
+                .font(ClimbTypography.title1)
+                .foregroundColor(.climbGranite)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, ClimbSpacing.md)
+
+            // Location breadcrumb
+            Text(displayCrag.location)
+                .font(ClimbTypography.caption)
+                .foregroundColor(.climbStone)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, ClimbSpacing.lg)
+
             // Status circle
             ZStack {
                 Circle()
@@ -92,6 +106,7 @@ struct CragDetailView: View {
                     .font(.system(size: 36))
                     .foregroundColor(.white)
             }
+            .padding(.top, ClimbSpacing.sm)
 
             // Status text
             VStack(spacing: ClimbSpacing.xs) {
@@ -104,13 +119,6 @@ struct CragDetailView: View {
                     .font(ClimbTypography.caption)
                     .foregroundColor(.climbStone)
             }
-
-            // Location breadcrumb
-            Text(displayCrag.location)
-                .font(ClimbTypography.caption)
-                .foregroundColor(.climbStone)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, ClimbSpacing.lg)
         }
         .padding(.vertical, ClimbSpacing.xl)
         .frame(maxWidth: .infinity)
