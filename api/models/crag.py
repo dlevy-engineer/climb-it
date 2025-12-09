@@ -8,6 +8,7 @@ class SafetyStatusEnum(str, Enum):
     SAFE = "SAFE"
     CAUTION = "CAUTION"
     UNSAFE = "UNSAFE"
+    UNKNOWN = "UNKNOWN"
 
 
 class PrecipitationData(BaseModel):
