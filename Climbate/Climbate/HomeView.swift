@@ -40,6 +40,9 @@ struct HomeView: View {
             .sheet(isPresented: $showingSearchView) {
                 SearchView()
             }
+            .toolbarBackground(Color.climbChalk, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.light, for: .navigationBar)
         }
     }
 
