@@ -195,39 +195,21 @@ def add_unknown_status():
 
 
 @cli.command()
-def add_temp_columns():
-    """Add temperature columns to precipitation table."""
-    from db.database import get_session
-    from sqlalchemy import text
+def migrate():
+    """Run database migrations (Alembic upgrade head)."""
+    from alembic.config import Config
+    from alembic import command
+    import os
 
-    log.info("Adding temperature columns to ods_precipitation")
+    log.info("Running database migrations")
 
-    session = get_session()
-    try:
-        # Check if columns exist
-        result = session.execute(text("""
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_NAME = 'ods_precipitation' AND COLUMN_NAME = 'temperature_max_c'
-        """))
-        if result.scalar():
-            log.info("temperature_max_c already exists")
-            return
+    # Get the directory where cli.py is located
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    alembic_cfg = Config(os.path.join(base_dir, "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", os.path.join(base_dir, "alembic"))
 
-        # Add the columns
-        session.execute(text("""
-            ALTER TABLE ods_precipitation
-            ADD COLUMN temperature_max_c DECIMAL(4,1) NULL,
-            ADD COLUMN temperature_min_c DECIMAL(4,1) NULL
-        """))
-        session.commit()
-        log.info("Successfully added temperature columns")
-    except Exception as e:
-        session.rollback()
-        log.error("Failed to add temperature columns", error=str(e))
-        raise
-    finally:
-        session.close()
+    command.upgrade(alembic_cfg, "head")
+    log.info("Migrations complete")
 
 
 if __name__ == "__main__":

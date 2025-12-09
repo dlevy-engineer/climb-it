@@ -26,7 +26,8 @@ def test_location_format():
             }
         }
     }
-    assert format_location(hierarchy) == "All Locations > California > Yosemite"
+    # Note: "All Locations" is skipped as it's just a root placeholder
+    assert format_location(hierarchy) == "California > Yosemite"
 
     # Test empty hierarchy
     assert format_location(None) == "Unknown"
