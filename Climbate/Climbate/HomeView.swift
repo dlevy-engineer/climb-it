@@ -7,54 +7,31 @@
 
 import SwiftUI
 
-// MARK: - Sort Order
-
-enum CragSortOrder: String, CaseIterable {
-    case status = "Status"
-    case name = "Name"
-    case location = "Location"
-
-    var icon: String {
-        switch self {
-        case .status: return "circle.lefthalf.filled"
-        case .name: return "textformat"
-        case .location: return "mappin"
-        }
-    }
-}
-
 struct HomeView: View {
     @EnvironmentObject var cragStore: CragStore
     @State private var showingSearchView = false
-    @AppStorage("cragSortOrder") private var sortOrder: CragSortOrder = .status
+    @State private var expandedStates: Set<String> = []
 
-    // MARK: - Sorted Crags
-
-    private var sortedCrags: [Crag] {
-        switch sortOrder {
-        case .status:
-            // Safe first, then Caution, then Unsafe, then Unknown
-            return cragStore.savedCrags.sorted { crag1, crag2 in
-                let order: [Crag.SafetyStatus] = [.safe, .caution, .unsafe, .unknown]
-                let index1 = order.firstIndex(of: crag1.safetyStatus) ?? order.count
-                let index2 = order.firstIndex(of: crag2.safetyStatus) ?? order.count
-                if index1 != index2 {
-                    return index1 < index2
-                }
-                return crag1.name < crag2.name
-            }
-        case .name:
-            return cragStore.savedCrags.sorted { $0.name < $1.name }
-        case .location:
-            return cragStore.savedCrags.sorted { $0.location < $1.location }
+    /// Groups crags by state, sorted alphabetically by state name, then crag name
+    private var groupedCrags: [(state: String, crags: [Crag])] {
+        let sorted = cragStore.savedCrags.sorted { $0.name < $1.name }
+        let grouped = Dictionary(grouping: sorted) { $0.state }
+        return grouped.keys.sorted().map { state in
+            (state: state, crags: grouped[state] ?? [])
         }
     }
 
-    /// Groups crags by state, sorted alphabetically by state name
-    private var groupedCrags: [(state: String, crags: [Crag])] {
-        let grouped = Dictionary(grouping: sortedCrags) { $0.state }
-        return grouped.keys.sorted().map { state in
-            (state: state, crags: grouped[state] ?? [])
+    private func isExpanded(_ state: String) -> Bool {
+        expandedStates.contains(state)
+    }
+
+    private func toggleState(_ state: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if expandedStates.contains(state) {
+                expandedStates.remove(state)
+            } else {
+                expandedStates.insert(state)
+            }
         }
     }
 
@@ -73,30 +50,6 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        ForEach(CragSortOrder.allCases, id: \.self) { order in
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    sortOrder = order
-                                }
-                            }) {
-                                Label(order.rawValue, systemImage: order.icon)
-                                if sortOrder == order {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.subheadline)
-                            Text(sortOrder.rawValue)
-                                .font(ClimbTypography.caption)
-                        }
-                        .foregroundColor(.climbRope)
-                    }
-                }
                 ToolbarItem(placement: .principal) {
                     ClimbLogo(size: .small)
                 }
@@ -174,19 +127,15 @@ struct HomeView: View {
                 statusSummary
                     .padding(.horizontal, ClimbSpacing.md)
 
-                // Crag cards grouped by state
-                LazyVStack(spacing: ClimbSpacing.lg, pinnedViews: .sectionHeaders) {
+                // Crag cards grouped by state (accordion)
+                LazyVStack(spacing: ClimbSpacing.sm) {
                     ForEach(groupedCrags, id: \.state) { group in
-                        Section {
-                            ForEach(group.crags) { crag in
-                                NavigationLink(destination: CragDetailView(crag: crag)) {
-                                    CragCard(crag: crag)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        } header: {
-                            StateHeader(state: group.state, count: group.crags.count)
-                        }
+                        StateAccordion(
+                            state: group.state,
+                            crags: group.crags,
+                            isExpanded: isExpanded(group.state),
+                            onToggle: { toggleState(group.state) }
+                        )
                     }
                 }
                 .padding(.horizontal, ClimbSpacing.md)
@@ -350,31 +299,85 @@ struct CragCard: View {
     }
 }
 
-// MARK: - State Header
+// MARK: - State Accordion
 
-struct StateHeader: View {
+struct StateAccordion: View {
     let state: String
-    let count: Int
+    let crags: [Crag]
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    private var safeCount: Int { crags.filter { $0.safetyStatus == .safe }.count }
+    private var cautionCount: Int { crags.filter { $0.safetyStatus == .caution }.count }
+    private var unsafeCount: Int { crags.filter { $0.safetyStatus == .unsafe }.count }
 
     var body: some View {
-        HStack {
-            Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 16))
-                .foregroundColor(.climbSandstone)
+        VStack(spacing: 0) {
+            // Header (always visible, tappable)
+            Button(action: onToggle) {
+                HStack {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.climbSandstone)
 
-            Text(state)
-                .font(ClimbTypography.title3)
-                .foregroundColor(.climbGranite)
+                    Text(state)
+                        .font(ClimbTypography.title3)
+                        .foregroundColor(.climbGranite)
 
-            Text("(\(count))")
-                .font(ClimbTypography.caption)
-                .foregroundColor(.climbStone)
+                    Spacer()
 
-            Spacer()
+                    // Status summary dots
+                    HStack(spacing: 4) {
+                        if safeCount > 0 {
+                            statusDot(color: .climbSafe, count: safeCount)
+                        }
+                        if cautionCount > 0 {
+                            statusDot(color: .climbCaution, count: cautionCount)
+                        }
+                        if unsafeCount > 0 {
+                            statusDot(color: .climbUnsafe, count: unsafeCount)
+                        }
+                    }
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.climbStone)
+                        .frame(width: 20)
+                }
+                .padding(.vertical, ClimbSpacing.md)
+                .padding(.horizontal, ClimbSpacing.sm)
+                .background(Color.white)
+                .cornerRadius(ClimbRadius.medium)
+                .climbSubtleShadow()
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Expandable content
+            if isExpanded {
+                VStack(spacing: ClimbSpacing.sm) {
+                    ForEach(crags) { crag in
+                        NavigationLink(destination: CragDetailView(crag: crag)) {
+                            CragCard(crag: crag)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.top, ClimbSpacing.sm)
+                .padding(.leading, ClimbSpacing.md)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .padding(.vertical, ClimbSpacing.sm)
-        .padding(.horizontal, ClimbSpacing.xs)
-        .background(Color.climbChalk)
+    }
+
+    private func statusDot(color: Color, count: Int) -> some View {
+        HStack(spacing: 2) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text("\(count)")
+                .font(ClimbTypography.micro)
+                .foregroundColor(.climbStone)
+        }
     }
 }
 
