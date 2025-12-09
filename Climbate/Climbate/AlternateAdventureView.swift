@@ -14,6 +14,7 @@ import CoreLocation
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     @Published var location: CLLocationCoordinate2D?
+    @Published var hasLocation: Bool = false
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
 
     override init() {
@@ -31,6 +32,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if let loc = locations.first {
             DispatchQueue.main.async {
                 self.location = loc.coordinate
+                self.hasLocation = true
             }
         }
     }
@@ -118,9 +120,9 @@ struct AlternateAdventureView: View {
         .task {
             await loadAdventures()
         }
-        .onChange(of: locationManager.location) { _, newLocation in
+        .onChange(of: locationManager.hasLocation) { _, hasLocation in
             // Reload when we get user location (only if not using crag)
-            if sourceCrag == nil && newLocation != nil {
+            if sourceCrag == nil && hasLocation {
                 Task {
                     await loadAdventures()
                 }
@@ -423,8 +425,8 @@ struct AdventureCard: View {
 #Preview("From Specific Crag") {
     NavigationStack {
         AlternateAdventureView(sourceCrag: Crag(
-            id: UUID(),
             name: "Red River Gorge",
+            location: "Kentucky",
             latitude: 37.7749,
             longitude: -83.6832,
             safetyStatus: .caution
