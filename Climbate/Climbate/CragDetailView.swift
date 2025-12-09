@@ -47,6 +47,9 @@ struct CragDetailView: View {
                     .padding(.bottom, ClimbSpacing.xxl)
                 }
             }
+            .refreshable {
+                detailedCrag = await cragStore.refreshCragDetails(crag)
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

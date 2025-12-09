@@ -61,6 +61,9 @@ struct ForecastView: View {
                     .padding(ClimbSpacing.md)
                     .padding(.bottom, ClimbSpacing.xxl)
                 }
+                .refreshable {
+                    await loadForecast()
+                }
             }
         }
         .navigationTitle("14-Day Forecast")
