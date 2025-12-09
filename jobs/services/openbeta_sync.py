@@ -3,6 +3,7 @@
 Uses the OpenBeta GraphQL API (properly licensed under CC BY-SA 4.0)
 instead of scraping Mountain Project.
 """
+import re
 import uuid
 import structlog
 from typing import Optional
@@ -22,14 +23,48 @@ def generate_deterministic_uuid(identifier: str) -> str:
     return str(uuid.uuid5(namespace, identifier))
 
 
-def build_location_hierarchy(path: list[str]) -> dict:
-    """Convert path list to nested hierarchy dict."""
+def clean_area_name(name: str) -> str:
+    """Clean up area names by removing special characters and numbering prefixes."""
+    # Remove numbering prefixes like "00. ", "01. ", "1. ", etc.
+    name = re.sub(r'^\d+\.\s*', '', name)
+    # Remove asterisks
+    name = name.replace('*', '')
+    # Remove smart quotes and regular quotes
+    name = name.replace('"', '').replace('"', '').replace('"', '')
+    # Remove leading/trailing whitespace
+    name = name.strip()
+    return name
+
+
+def build_location_hierarchy(path: list[str], exclude_last: bool = True) -> dict:
+    """Convert path list to nested hierarchy dict.
+
+    Args:
+        path: List of location names from root to leaf
+        exclude_last: If True, exclude the last element (the crag name itself)
+
+    Returns:
+        Nested dict with "name" and "child" keys
+    """
     if not path:
         return {}
 
+    # Filter out "USA" from the beginning
+    filtered_path = [p for p in path if p.upper() != "USA"]
+
+    # Exclude the last element (crag name) since it's already the crag's name
+    if exclude_last and len(filtered_path) > 0:
+        filtered_path = filtered_path[:-1]
+
+    if not filtered_path:
+        return {}
+
+    # Clean names and build hierarchy
     result = None
-    for name in reversed(path):
-        result = {"name": name, "child": result}
+    for name in reversed(filtered_path):
+        cleaned_name = clean_area_name(name)
+        if cleaned_name:  # Skip empty names after cleaning
+            result = {"name": cleaned_name, "child": result}
 
     return result or {}
 
