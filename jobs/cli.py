@@ -182,12 +182,14 @@ def clear_crags():
         count = session.execute(text('SELECT COUNT(*) FROM ods_crags')).scalar()
         log.info("current_crag_count", count=count)
 
-        # Clear the weather data first (foreign key constraint) - ignore if table doesn't exist
-        try:
-            session.execute(text('DELETE FROM ods_weather'))
-            log.info("cleared_weather_data")
-        except Exception as e:
-            log.info("weather_table_not_found", note="skipping weather clear")
+        # Clear all dependent tables first (foreign key constraints)
+        dependent_tables = ['ods_weather', 'ods_precipitation']
+        for table in dependent_tables:
+            try:
+                session.execute(text(f'DELETE FROM {table}'))
+                log.info("cleared_table", table=table)
+            except Exception:
+                log.info("table_not_found", table=table, note="skipping")
 
         # Then clear crags
         session.execute(text('DELETE FROM ods_crags'))
