@@ -6,12 +6,15 @@ Mountain Project uses Cloudflare which blocks simple HTTP requests.
 Scraping is done respectfully with:
 - Proper rate limiting between requests
 - Retry logic with exponential backoff
+- Browser recovery on crash
 """
 import structlog
+import time
+import random
 from dataclasses import dataclass
 from typing import Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
-from playwright.sync_api import sync_playwright, Browser, Page
+from playwright.sync_api import sync_playwright, Browser, Page, Error as PlaywrightError
 
 log = structlog.get_logger()
 
@@ -45,8 +48,11 @@ class MountainProjectScraper:
         self._context = None
         self._page: Optional[Page] = None
 
-    def _ensure_browser(self):
-        """Lazily initialize browser on first use."""
+    def _ensure_browser(self, force_restart: bool = False):
+        """Lazily initialize browser on first use, or restart if crashed."""
+        if force_restart:
+            self._cleanup_browser()
+
         if self._browser is None:
             log.info("starting_playwright_browser")
             self._playwright = sync_playwright().start()
@@ -56,24 +62,54 @@ class MountainProjectScraper:
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
                 ]
             )
+            # Use stealth-like settings
             self._context = self._browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+                timezone_id="America/New_York",
+                java_script_enabled=True,
             )
+            # Remove webdriver property to avoid detection
+            self._context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
             self._page = self._context.new_page()
 
-    def close(self):
-        if self._context:
-            self._context.close()
-        if self._browser:
-            self._browser.close()
-        if self._playwright:
-            self._playwright.stop()
+    def _cleanup_browser(self):
+        """Clean up browser resources."""
+        try:
+            if self._page:
+                self._page.close()
+        except Exception:
+            pass
+        try:
+            if self._context:
+                self._context.close()
+        except Exception:
+            pass
+        try:
+            if self._browser:
+                self._browser.close()
+        except Exception:
+            pass
+        try:
+            if self._playwright:
+                self._playwright.stop()
+        except Exception:
+            pass
         self._page = None
         self._context = None
         self._browser = None
         self._playwright = None
+
+    def close(self):
+        self._cleanup_browser()
 
     def __enter__(self):
         return self
@@ -81,15 +117,37 @@ class MountainProjectScraper:
     def __exit__(self, *args):
         self.close()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    def fetch_page(self, url: str) -> str:
-        """Fetch a page with Playwright, waiting for content to load."""
-        self._ensure_browser()
-        log.debug("scraper_fetch", url=url)
+    def fetch_page(self, url: str, retry_count: int = 0) -> str:
+        """Fetch a page with Playwright, waiting for content to load.
 
-        self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        Handles browser crashes by restarting and retrying.
+        """
+        max_retries = 3
 
-        return self._page.content()
+        try:
+            self._ensure_browser()
+            log.debug("scraper_fetch", url=url)
+
+            # Random delay between requests (2-5 seconds)
+            delay = random.uniform(2.0, 5.0)
+            time.sleep(delay)
+
+            self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            # Additional small delay after page load
+            time.sleep(random.uniform(0.5, 1.5))
+
+            return self._page.content()
+
+        except PlaywrightError as e:
+            error_msg = str(e).lower()
+            if retry_count < max_retries and ("target closed" in error_msg or "browser" in error_msg or "context" in error_msg):
+                log.warning("browser_crashed_restarting", url=url, retry=retry_count + 1, error=str(e))
+                # Wait longer before restart to avoid rate limiting
+                time.sleep(random.uniform(5.0, 10.0))
+                self._ensure_browser(force_restart=True)
+                return self.fetch_page(url, retry_count + 1)
+            raise
 
     def get_all_state_urls(self) -> list[tuple[str, str]]:
         """Get all US state area URLs from the route guide."""
