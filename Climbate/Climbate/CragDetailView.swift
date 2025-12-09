@@ -12,9 +12,6 @@ struct CragDetailView: View {
     let crag: Crag
     @EnvironmentObject var cragStore: CragStore
     @State private var detailedCrag: Crag?
-    @State private var forecast: CragForecast?
-    @State private var isLoadingForecast = false
-    @State private var showForecast = false
     @AppStorage("useImperialUnits") private var useImperialUnits = true
 
     var displayCrag: Crag {
@@ -37,17 +34,8 @@ struct CragDetailView: View {
                             statusCard
                         }
 
-                        // Weather card (tappable to expand forecast)
+                        // Weather card (navigates to forecast page)
                         weatherCard
-
-                        // Forecast calendar (expandable)
-                        if showForecast {
-                            forecastCard
-                                .transition(.asymmetric(
-                                    insertion: .move(edge: .top).combined(with: .opacity),
-                                    removal: .opacity
-                                ))
-                        }
 
                         // Quick actions
                         actionsCard
@@ -55,7 +43,6 @@ struct CragDetailView: View {
                         // Location links
                         linksCard
                     }
-                    .animation(.easeInOut(duration: 0.3), value: showForecast)
                     .padding(ClimbSpacing.md)
                     .padding(.bottom, ClimbSpacing.xxl)
                 }
@@ -80,11 +67,7 @@ struct CragDetailView: View {
             }
         }
         .task {
-            async let cragTask = cragStore.refreshCragDetails(crag)
-            async let forecastTask = loadForecast()
-
-            detailedCrag = await cragTask
-            _ = await forecastTask
+            detailedCrag = await cragStore.refreshCragDetails(crag)
         }
     }
 
@@ -167,11 +150,7 @@ struct CragDetailView: View {
     // MARK: - Weather Card
 
     private var weatherCard: some View {
-        Button(action: {
-            withAnimation {
-                showForecast.toggle()
-            }
-        }) {
+        NavigationLink(destination: ForecastView(crag: displayCrag)) {
             VStack(alignment: .leading, spacing: ClimbSpacing.md) {
                 HStack {
                     Image(systemName: "cloud.sun.fill")
@@ -182,16 +161,12 @@ struct CragDetailView: View {
 
                     Spacer()
 
-                    // Expand/collapse indicator
+                    // Navigate to forecast indicator
                     HStack(spacing: 4) {
-                        if isLoadingForecast {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        }
-                        Text(showForecast ? "Hide Forecast" : "14-Day Forecast")
+                        Text("14-Day Forecast")
                             .font(ClimbTypography.caption)
                             .foregroundColor(.climbRope)
-                        Image(systemName: showForecast ? "chevron.up" : "chevron.down")
+                        Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.climbRope)
                     }
@@ -567,171 +542,10 @@ struct CragDetailView: View {
         }
     }
 
-    // MARK: - Forecast Card
-
-    private var forecastCard: some View {
-        VStack(alignment: .leading, spacing: ClimbSpacing.md) {
-            HStack {
-                // Unit toggle
-                Menu {
-                    Button(action: { useImperialUnits = true }) {
-                        Label("Imperial (°F, in)", systemImage: useImperialUnits ? "checkmark" : "")
-                    }
-                    Button(action: { useImperialUnits = false }) {
-                        Label("Metric (°C, mm)", systemImage: useImperialUnits ? "" : "checkmark")
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(useImperialUnits ? "°F / in" : "°C / mm")
-                            .font(ClimbTypography.captionBold)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10))
-                    }
-                    .foregroundColor(.climbRope)
-                    .padding(.horizontal, ClimbSpacing.sm)
-                    .padding(.vertical, ClimbSpacing.xs)
-                    .background(Color.climbRope.opacity(0.1))
-                    .cornerRadius(ClimbRadius.small)
-                }
-
-                Spacer()
-
-                Text("Scroll for more")
-                    .font(ClimbTypography.micro)
-                    .foregroundColor(.climbStone)
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 10))
-                    .foregroundColor(.climbStone)
-            }
-
-            if let forecast = forecast {
-                // Estimated safe date banner
-                if displayCrag.safetyStatus != .safe, let safeDate = forecast.estimatedSafeDateFormatted {
-                    HStack(spacing: ClimbSpacing.sm) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.climbSafe)
-                        Text("Expected safe: \(safeDate)")
-                            .font(ClimbTypography.captionBold)
-                            .foregroundColor(.climbSafe)
-                    }
-                    .padding(ClimbSpacing.sm)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.climbSafe.opacity(0.1))
-                    .cornerRadius(ClimbRadius.small)
-                }
-
-                // Calendar grid
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: ClimbSpacing.sm) {
-                        ForEach(forecast.days) { day in
-                            forecastDayCell(day: day)
-                        }
-                    }
-                }
-            } else if !isLoadingForecast {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundColor(.climbCaution)
-                    Text("Forecast unavailable")
-                        .font(ClimbTypography.body)
-                        .foregroundColor(.climbStone)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, ClimbSpacing.md)
-            }
-        }
-        .padding(ClimbSpacing.md)
-        .background(Color.white)
-        .cornerRadius(ClimbRadius.large)
-        .climbCardShadow()
-    }
-
-    private func forecastDayCell(day: DayForecast) -> some View {
-        VStack(spacing: ClimbSpacing.xs) {
-            // Day name
-            Text(day.dayOfWeek)
-                .font(ClimbTypography.micro)
-                .foregroundColor(.climbStone)
-
-            // Day number
-            Text(day.dayOfMonth)
-                .font(ClimbTypography.captionBold)
-                .foregroundColor(.climbGranite)
-
-            // Weather icon
-            Image(systemName: day.weatherIcon)
-                .font(.system(size: 20))
-                .foregroundColor(weatherIconColor(for: day))
-                .frame(height: 24)
-
-            // Temperature (with unit conversion)
-            if let high = day.tempHighC {
-                let displayTemp = useImperialUnits ? celsiusToFahrenheit(high) : high
-                Text("\(Int(displayTemp))°")
-                    .font(ClimbTypography.micro)
-                    .foregroundColor(.climbStone)
-            }
-
-            // Status indicator dot
-            Circle()
-                .fill(statusColor(for: day.predictedStatus))
-                .frame(width: 12, height: 12)
-
-            // Precipitation (with unit conversion)
-            let displayPrecip = useImperialUnits ? mmToInches(day.precipitationMm) : day.precipitationMm
-            let precipUnit = useImperialUnits ? "in" : "mm"
-            let precipFormat = useImperialUnits ? "%.2f" : "%.1f"
-            if day.precipitationMm > 0 {
-                Text("\(String(format: precipFormat, displayPrecip))\(precipUnit)")
-                    .font(.system(size: 9))
-                    .foregroundColor(.climbRope)
-            } else {
-                Text("0\(precipUnit)")
-                    .font(.system(size: 9))
-                    .foregroundColor(.climbStone.opacity(0.5))
-            }
-        }
-        .frame(width: 44)
-        .padding(.vertical, ClimbSpacing.sm)
-        .background(statusColor(for: day.predictedStatus).opacity(0.05))
-        .cornerRadius(ClimbRadius.small)
-    }
-
     // MARK: - Unit Conversions
-
-    private func celsiusToFahrenheit(_ celsius: Double) -> Double {
-        celsius * 9 / 5 + 32
-    }
 
     private func mmToInches(_ mm: Double) -> Double {
         mm / 25.4
-    }
-
-    private func weatherIconColor(for day: DayForecast) -> Color {
-        if day.precipitationMm > 1 {
-            return .climbRope
-        }
-        return .climbSandstone
-    }
-
-    private func statusColor(for status: Crag.SafetyStatus) -> Color {
-        switch status {
-        case .safe: return .climbSafe
-        case .caution: return .climbCaution
-        case .unsafe: return .climbUnsafe
-        case .unknown: return .climbUnknown
-        }
-    }
-
-    private func loadForecast() async {
-        isLoadingForecast = true
-        defer { isLoadingForecast = false }
-
-        do {
-            forecast = try await APIClient.shared.getForecast(cragId: crag.id, days: 14)
-        } catch {
-            print("Error loading forecast: \(error)")
-        }
     }
 
     // MARK: - URLs
