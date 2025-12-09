@@ -8,7 +8,7 @@
 import Foundation
 
 struct Crag: Identifiable, Codable, Equatable {
-    let id: UUID
+    let id: String
     let name: String
     let location: String
     let latitude: Double
@@ -54,17 +54,10 @@ struct Crag: Identifiable, Codable, Equatable {
         case mountainProjectUrl = "mountain_project_url"
     }
 
-    // Custom decoder to handle UUID from string
+    // Decoder for API responses
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-
-        // Handle id as either UUID or String
-        if let uuidString = try? container.decode(String.self, forKey: .id) {
-            self.id = UUID(uuidString: uuidString) ?? UUID()
-        } else {
-            self.id = try container.decode(UUID.self, forKey: .id)
-        }
-
+        self.id = try container.decode(String.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.location = try container.decode(String.self, forKey: .location)
         self.latitude = try container.decode(Double.self, forKey: .latitude)
@@ -77,7 +70,7 @@ struct Crag: Identifiable, Codable, Equatable {
 
     // Manual initializer for previews and testing
     init(
-        id: UUID = UUID(),
+        id: String = UUID().uuidString,
         name: String,
         location: String,
         latitude: Double = 0.0,

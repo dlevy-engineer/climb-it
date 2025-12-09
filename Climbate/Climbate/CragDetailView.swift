@@ -28,11 +28,13 @@ struct CragDetailView: View {
 
                     // Content
                     VStack(spacing: ClimbSpacing.lg) {
+                        // Status message (only show for non-safe statuses)
+                        if displayCrag.safetyStatus != .safe {
+                            statusCard
+                        }
+
                         // Weather card
                         weatherCard
-
-                        // Status message
-                        statusCard
 
                         // Quick actions
                         actionsCard
@@ -339,6 +341,16 @@ struct CragDetailView: View {
             Text("Conditions are variable. Check local reports and inspect the rock before committing to a route.")
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbGranite)
+
+            NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
+                HStack {
+                    Image(systemName: "arrow.triangle.branch")
+                    Text("Find Alternatives Near \(displayCrag.name)")
+                }
+                .font(ClimbTypography.captionBold)
+                .foregroundColor(.climbRope)
+            }
+            .padding(.top, ClimbSpacing.xs)
         }
     }
 
@@ -377,6 +389,16 @@ struct CragDetailView: View {
             Text("Weather data is not yet available for this area. Check local conditions before climbing.")
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbGranite)
+
+            NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
+                HStack {
+                    Image(systemName: "arrow.triangle.branch")
+                    Text("Find Alternatives Near \(displayCrag.name)")
+                }
+                .font(ClimbTypography.captionBold)
+                .foregroundColor(.climbRope)
+            }
+            .padding(.top, ClimbSpacing.xs)
         }
     }
 

@@ -77,7 +77,9 @@ class CragStore: ObservableObject {
         defer { isLoading = false }
 
         do {
-            return try await apiClient.searchCrags(query: query)
+            let results = try await apiClient.searchCrags(query: query)
+            print("Search returned \(results.count) crags")
+            return results
         } catch {
             self.error = error.localizedDescription
             print("Error searching crags: \(error)")
@@ -87,9 +89,10 @@ class CragStore: ObservableObject {
 
     func refreshCragDetails(_ crag: Crag) async -> Crag? {
         do {
-            return try await apiClient.getCrag(id: crag.id)
+            let detailed = try await apiClient.getCrag(id: crag.id)
+            return detailed
         } catch {
-            print("Error fetching crag details: \(error)")
+            print("Error fetching crag details for \(crag.id): \(error)")
             return nil
         }
     }

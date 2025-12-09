@@ -72,8 +72,8 @@ class APIClient {
     }
 
     /// Get detailed crag info including precipitation data
-    func getCrag(id: UUID) async throws -> Crag {
-        let url = baseURL.appendingPathComponent("crags/\(id.uuidString)")
+    func getCrag(id: String) async throws -> Crag {
+        let url = baseURL.appendingPathComponent("crags/\(id)")
         return try await fetch(from: url)
     }
 

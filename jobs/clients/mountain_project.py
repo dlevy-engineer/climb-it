@@ -163,9 +163,15 @@ class MountainProjectScraper:
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # Extract name
+        # Extract name (exclude nested elements like <small>Rock Climbing</small>)
         h1 = soup.find("h1")
-        name = h1.get_text(strip=True) if h1 else "Unknown"
+        if h1:
+            # Get only direct text, not text from nested elements
+            name = "".join(h1.find_all(string=True, recursive=False)).strip()
+            if not name:
+                name = h1.get_text(strip=True)
+        else:
+            name = "Unknown"
 
         # Extract coordinates from GPS table row using regex
         lat, lon = None, None

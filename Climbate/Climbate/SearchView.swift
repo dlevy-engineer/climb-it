@@ -24,7 +24,6 @@ struct SearchView: View {
         case safe = "Safe"
         case caution = "Caution"
         case unsafe = "Unsafe"
-        case unknown = "Unknown"
     }
 
     var filteredResults: [Crag] {
@@ -33,7 +32,6 @@ struct SearchView: View {
         case .safe: return searchResults.filter { $0.safetyStatus == .safe }
         case .caution: return searchResults.filter { $0.safetyStatus == .caution }
         case .unsafe: return searchResults.filter { $0.safetyStatus == .unsafe }
-        case .unknown: return searchResults.filter { $0.safetyStatus == .unknown }
         }
     }
 
@@ -60,9 +58,9 @@ struct SearchView: View {
                     // Content
                     if isLoading {
                         loadingState
-                    } else if searchResults.isEmpty && hasSearched {
+                    } else if filteredResults.isEmpty && hasSearched {
                         emptySearchState
-                    } else if searchResults.isEmpty && !hasSearched {
+                    } else if filteredResults.isEmpty {
                         initialState
                     } else if showMap {
                         mapView
@@ -72,6 +70,12 @@ struct SearchView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Load all crags when view appears
+                if searchResults.isEmpty {
+                    await loadAllCrags()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Discover")
@@ -147,7 +151,6 @@ struct SearchView: View {
         case .safe: return .climbSafe
         case .caution: return .climbCaution
         case .unsafe: return .climbUnsafe
-        case .unknown: return .climbUnknown
         }
     }
 
@@ -204,15 +207,15 @@ struct SearchView: View {
         VStack(spacing: ClimbSpacing.md) {
             Spacer()
 
-            Image(systemName: "binoculars.fill")
+            Image(systemName: "mountain.2.fill")
                 .font(.system(size: 48))
                 .foregroundColor(.climbSandstone)
 
-            Text("Discover Crags")
+            Text("No Crags Available")
                 .font(ClimbTypography.title2)
                 .foregroundColor(.climbGranite)
 
-            Text("Start typing to search for\nclimbing areas")
+            Text("Check back later for\nclimbing area data")
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbStone)
                 .multilineTextAlignment(.center)
@@ -269,9 +272,16 @@ struct SearchView: View {
 
     // MARK: - Actions
 
+    private func loadAllCrags() async {
+        isLoading = true
+        searchResults = await cragStore.fetchAllCrags()
+        isLoading = false
+    }
+
     private func performSearch() async {
         guard !searchText.isEmpty else {
-            searchResults = []
+            // Reset to full list when search is cleared
+            await loadAllCrags()
             hasSearched = false
             return
         }

@@ -10,7 +10,6 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var cragStore: CragStore
     @State private var showingSearchView = false
-    @State private var expandedStates: Set<String> = []
 
     /// Groups crags by state, sorted alphabetically by state name, then crag name
     private var groupedCrags: [(state: String, crags: [Crag])] {
@@ -18,20 +17,6 @@ struct HomeView: View {
         let grouped = Dictionary(grouping: sorted) { $0.state }
         return grouped.keys.sorted().map { state in
             (state: state, crags: grouped[state] ?? [])
-        }
-    }
-
-    private func isExpanded(_ state: String) -> Bool {
-        expandedStates.contains(state)
-    }
-
-    private func toggleState(_ state: String) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if expandedStates.contains(state) {
-                expandedStates.remove(state)
-            } else {
-                expandedStates.insert(state)
-            }
         }
     }
 
@@ -55,8 +40,9 @@ struct HomeView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingSearchView.toggle() }) {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: "plus")
                             .font(.title3)
+                            .fontWeight(.medium)
                             .foregroundColor(.climbRope)
                     }
                 }
@@ -127,15 +113,10 @@ struct HomeView: View {
                 statusSummary
                     .padding(.horizontal, ClimbSpacing.md)
 
-                // Crag cards grouped by state (accordion)
-                LazyVStack(spacing: ClimbSpacing.sm) {
+                // Crag cards grouped by state
+                LazyVStack(spacing: ClimbSpacing.lg) {
                     ForEach(groupedCrags, id: \.state) { group in
-                        StateAccordion(
-                            state: group.state,
-                            crags: group.crags,
-                            isExpanded: isExpanded(group.state),
-                            onToggle: { toggleState(group.state) }
-                        )
+                        StateSection(state: group.state, crags: group.crags)
                     }
                 }
                 .padding(.horizontal, ClimbSpacing.md)
@@ -226,7 +207,7 @@ struct CragCard: View {
                 // Header row
                 HStack {
                     Text(crag.name)
-                        .font(ClimbTypography.title3)
+                        .font(ClimbTypography.bodyBold)
                         .foregroundColor(.climbGranite)
                         .lineLimit(1)
 
@@ -299,72 +280,50 @@ struct CragCard: View {
     }
 }
 
-// MARK: - State Accordion
+// MARK: - State Section
 
-struct StateAccordion: View {
+struct StateSection: View {
     let state: String
     let crags: [Crag]
-    let isExpanded: Bool
-    let onToggle: () -> Void
 
     private var safeCount: Int { crags.filter { $0.safetyStatus == .safe }.count }
     private var cautionCount: Int { crags.filter { $0.safetyStatus == .caution }.count }
     private var unsafeCount: Int { crags.filter { $0.safetyStatus == .unsafe }.count }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header (always visible, tappable)
-            Button(action: onToggle) {
-                HStack {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.climbSandstone)
+        VStack(spacing: ClimbSpacing.sm) {
+            // Section header
+            HStack {
+                Text(state.uppercased())
+                    .font(ClimbTypography.micro)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.climbStone)
+                    .tracking(1)
 
-                    Text(state)
-                        .font(ClimbTypography.title3)
-                        .foregroundColor(.climbGranite)
+                Spacer()
 
-                    Spacer()
-
-                    // Status summary dots
-                    HStack(spacing: 4) {
-                        if safeCount > 0 {
-                            statusDot(color: .climbSafe, count: safeCount)
-                        }
-                        if cautionCount > 0 {
-                            statusDot(color: .climbCaution, count: cautionCount)
-                        }
-                        if unsafeCount > 0 {
-                            statusDot(color: .climbUnsafe, count: unsafeCount)
-                        }
+                // Status summary dots
+                HStack(spacing: 4) {
+                    if safeCount > 0 {
+                        statusDot(color: .climbSafe, count: safeCount)
                     }
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(.climbStone)
-                        .frame(width: 20)
+                    if cautionCount > 0 {
+                        statusDot(color: .climbCaution, count: cautionCount)
+                    }
+                    if unsafeCount > 0 {
+                        statusDot(color: .climbUnsafe, count: unsafeCount)
+                    }
                 }
-                .padding(.vertical, ClimbSpacing.md)
-                .padding(.horizontal, ClimbSpacing.sm)
-                .background(Color.white)
-                .cornerRadius(ClimbRadius.medium)
-                .climbSubtleShadow()
             }
-            .buttonStyle(PlainButtonStyle())
+            .padding(.vertical, ClimbSpacing.sm)
+            .padding(.horizontal, ClimbSpacing.sm)
 
-            // Expandable content
-            if isExpanded {
-                VStack(spacing: ClimbSpacing.sm) {
-                    ForEach(crags) { crag in
-                        NavigationLink(destination: CragDetailView(crag: crag)) {
-                            CragCard(crag: crag)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
+            // Crag cards
+            ForEach(crags) { crag in
+                NavigationLink(destination: CragDetailView(crag: crag)) {
+                    CragCard(crag: crag)
                 }
-                .padding(.top, ClimbSpacing.sm)
-                .padding(.leading, ClimbSpacing.md)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }

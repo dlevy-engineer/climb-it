@@ -75,7 +75,7 @@ class AdventureService: ObservableObject {
         var results: [AdventureType: [Adventure]] = [:]
         results[.dryCrag] = safeCrags.map { crag in
             Adventure(
-                id: crag.id.uuidString,
+                id: crag.id,
                 name: crag.name,
                 type: .dryCrag,
                 coordinate: CLLocationCoordinate2D(latitude: crag.latitude, longitude: crag.longitude),
