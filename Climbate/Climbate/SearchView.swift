@@ -13,9 +13,8 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText: String = ""
-    @State private var searchResults: [Crag] = []
+    @State private var allCrags: [Crag] = []  // Master list from API
     @State private var isLoading: Bool = false
-    @State private var hasSearched: Bool = false
     @State private var showMap: Bool = false
     @State private var selectedFilter: StatusFilter = .all
 
@@ -26,12 +25,26 @@ struct SearchView: View {
         case unsafe = "Unsafe"
     }
 
+    /// Filter crags by search text and safety status (all done locally for instant response)
     var filteredResults: [Crag] {
+        // First filter by search text
+        let textFiltered: [Crag]
+        if searchText.isEmpty {
+            textFiltered = allCrags
+        } else {
+            let query = searchText.lowercased()
+            textFiltered = allCrags.filter {
+                $0.name.lowercased().contains(query) ||
+                $0.location.lowercased().contains(query)
+            }
+        }
+
+        // Then filter by safety status
         switch selectedFilter {
-        case .all: return searchResults
-        case .safe: return searchResults.filter { $0.safetyStatus == .safe }
-        case .caution: return searchResults.filter { $0.safetyStatus == .caution }
-        case .unsafe: return searchResults.filter { $0.safetyStatus == .unsafe }
+        case .all: return textFiltered
+        case .safe: return textFiltered.filter { $0.safetyStatus == .safe }
+        case .caution: return textFiltered.filter { $0.safetyStatus == .caution }
+        case .unsafe: return textFiltered.filter { $0.safetyStatus == .unsafe }
         }
     }
 
@@ -68,10 +81,10 @@ struct SearchView: View {
                     // Content
                     if isLoading {
                         loadingState
-                    } else if filteredResults.isEmpty && hasSearched {
-                        emptySearchState
-                    } else if filteredResults.isEmpty {
+                    } else if allCrags.isEmpty {
                         initialState
+                    } else if filteredResults.isEmpty {
+                        emptySearchState
                     } else if showMap {
                         mapView
                     } else {
@@ -82,7 +95,7 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 // Load all crags when view appears
-                if searchResults.isEmpty {
+                if allCrags.isEmpty {
                     await loadAllCrags()
                 }
             }
@@ -113,16 +126,9 @@ struct SearchView: View {
                 .foregroundColor(.climbGranite)
                 .tint(.climbRope)
                 .autocorrectionDisabled()
-                .onSubmit {
-                    Task { await performSearch() }
-                }
 
             if !searchText.isEmpty {
-                Button(action: {
-                    searchText = ""
-                    searchResults = []
-                    hasSearched = false
-                }) {
+                Button(action: { searchText = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.climbStone)
                 }
@@ -284,21 +290,7 @@ struct SearchView: View {
 
     private func loadAllCrags() async {
         isLoading = true
-        searchResults = await cragStore.fetchAllCrags()
-        isLoading = false
-    }
-
-    private func performSearch() async {
-        guard !searchText.isEmpty else {
-            // Reset to full list when search is cleared
-            await loadAllCrags()
-            hasSearched = false
-            return
-        }
-
-        isLoading = true
-        hasSearched = true
-        searchResults = await cragStore.searchCrags(query: searchText)
+        allCrags = await cragStore.fetchAllCrags()
         isLoading = false
     }
 }

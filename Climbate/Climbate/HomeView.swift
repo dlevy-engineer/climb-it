@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var cragStore: CragStore
     @State private var showingSearchView = false
+    @State private var isRefreshing = false
 
     /// Groups crags by state, sorted alphabetically by state name, then crag name
     private var groupedCrags: [(state: String, crags: [Crag])] {
@@ -124,6 +125,25 @@ struct HomeView: View {
             .padding(.top, ClimbSpacing.md)
             .padding(.bottom, ClimbSpacing.xxl)
         }
+        .refreshable {
+            await refreshSavedCrags()
+        }
+    }
+
+    // MARK: - Refresh
+
+    private func refreshSavedCrags() async {
+        isRefreshing = true
+        // Refresh each saved crag to get updated weather/safety data
+        for crag in cragStore.savedCrags {
+            if let updated = await cragStore.refreshCragDetails(crag) {
+                // Update the crag in savedCrags
+                if let index = cragStore.savedCrags.firstIndex(where: { $0.id == crag.id }) {
+                    cragStore.savedCrags[index] = updated
+                }
+            }
+        }
+        isRefreshing = false
     }
 
     // MARK: - Status Summary
