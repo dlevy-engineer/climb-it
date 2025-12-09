@@ -75,7 +75,7 @@ struct Crag: Identifiable, Codable, Equatable {
         location: String,
         latitude: Double = 0.0,
         longitude: Double = 0.0,
-        safetyStatus: SafetyStatus = .caution,
+        safetyStatus: SafetyStatus = .unknown,
         googleMapsUrl: String? = nil,
         mountainProjectUrl: String? = nil,
         precipitation: PrecipitationData? = nil

@@ -167,9 +167,12 @@ class MountainProjectScraper:
         h1 = soup.find("h1")
         if h1:
             # Get only direct text, not text from nested elements
-            name = "".join(h1.find_all(string=True, recursive=False)).strip()
+            texts = h1.find_all(string=True, recursive=False)
+            # Filter out empty strings and take first meaningful text
+            name = next((t.strip() for t in texts if t.strip()), None)
             if not name:
-                name = h1.get_text(strip=True)
+                # Fallback: get first line of text content
+                name = h1.get_text(strip=True).split('\n')[0].strip()
         else:
             name = "Unknown"
 

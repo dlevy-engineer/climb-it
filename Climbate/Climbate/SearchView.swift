@@ -253,7 +253,10 @@ struct SearchView: View {
         ScrollView {
             LazyVStack(spacing: ClimbSpacing.sm) {
                 ForEach(filteredResults) { crag in
-                    SearchResultRow(crag: crag)
+                    NavigationLink(destination: CragDetailView(crag: crag)) {
+                        SearchResultRow(crag: crag)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, ClimbSpacing.md)

@@ -319,7 +319,7 @@ struct CragDetailView: View {
             NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
-                    Text("Find Alternatives Near \(displayCrag.name)")
+                    Text("Find Alternate Adventures")
                 }
                 .font(ClimbTypography.captionBold)
                 .foregroundColor(.climbRope)
@@ -345,7 +345,7 @@ struct CragDetailView: View {
             NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
-                    Text("Find Alternatives Near \(displayCrag.name)")
+                    Text("Find Alternate Adventures")
                 }
                 .font(ClimbTypography.captionBold)
                 .foregroundColor(.climbRope)
@@ -393,7 +393,7 @@ struct CragDetailView: View {
             NavigationLink(destination: AlternateAdventureView(sourceCrag: displayCrag)) {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
-                    Text("Find Alternatives Near \(displayCrag.name)")
+                    Text("Find Alternate Adventures")
                 }
                 .font(ClimbTypography.captionBold)
                 .foregroundColor(.climbRope)
