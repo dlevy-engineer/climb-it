@@ -46,7 +46,7 @@ class MountainProjectScraper:
         self._playwright = None
         self._browser: Optional[Browser] = None
         self._context = None
-        self._page: Optional[Page] = None
+        self._request_count = 0
 
     def _ensure_browser(self, force_restart: bool = False):
         """Lazily initialize browser on first use, or restart if crashed."""
@@ -62,32 +62,34 @@ class MountainProjectScraper:
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled",
                 ]
             )
-            # Use stealth-like settings
-            self._context = self._browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1920, "height": 1080},
-                locale="en-US",
-                timezone_id="America/New_York",
-                java_script_enabled=True,
-            )
-            # Remove webdriver property to avoid detection
-            self._context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                });
-            """)
-            self._page = self._context.new_page()
+            self._create_context()
+
+    def _create_context(self):
+        """Create a fresh browser context with stealth settings."""
+        if self._context:
+            try:
+                self._context.close()
+            except Exception:
+                pass
+
+        self._context = self._browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080},
+            locale="en-US",
+            timezone_id="America/New_York",
+            java_script_enabled=True,
+        )
+        # Remove webdriver property to avoid detection
+        self._context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
 
     def _cleanup_browser(self):
         """Clean up browser resources."""
-        try:
-            if self._page:
-                self._page.close()
-        except Exception:
-            pass
         try:
             if self._context:
                 self._context.close()
@@ -103,7 +105,6 @@ class MountainProjectScraper:
                 self._playwright.stop()
         except Exception:
             pass
-        self._page = None
         self._context = None
         self._browser = None
         self._playwright = None
@@ -120,9 +121,11 @@ class MountainProjectScraper:
     def fetch_page(self, url: str, retry_count: int = 0) -> str:
         """Fetch a page with Playwright, waiting for content to load.
 
+        Creates a fresh page for each request for stability.
         Handles browser crashes by restarting and retrying.
         """
         max_retries = 3
+        page = None
 
         try:
             self._ensure_browser()
@@ -132,22 +135,38 @@ class MountainProjectScraper:
             delay = random.uniform(2.0, 5.0)
             time.sleep(delay)
 
-            self._page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            # Refresh context every 50 requests to prevent memory bloat
+            self._request_count += 1
+            if self._request_count % 50 == 0:
+                log.info("refreshing_browser_context", request_count=self._request_count)
+                self._create_context()
+
+            # Create a fresh page for each request (more stable)
+            page = self._context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
             # Additional small delay after page load
             time.sleep(random.uniform(0.5, 1.5))
 
-            return self._page.content()
+            content = page.content()
+            return content
 
         except PlaywrightError as e:
             error_msg = str(e).lower()
-            if retry_count < max_retries and ("target closed" in error_msg or "browser" in error_msg or "context" in error_msg):
+            if retry_count < max_retries and ("target closed" in error_msg or "browser" in error_msg or "context" in error_msg or "crash" in error_msg):
                 log.warning("browser_crashed_restarting", url=url, retry=retry_count + 1, error=str(e))
                 # Wait longer before restart to avoid rate limiting
                 time.sleep(random.uniform(5.0, 10.0))
                 self._ensure_browser(force_restart=True)
                 return self.fetch_page(url, retry_count + 1)
             raise
+        finally:
+            # Always close the page after use
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
     def get_all_state_urls(self) -> list[tuple[str, str]]:
         """Get all US state area URLs from the route guide."""
