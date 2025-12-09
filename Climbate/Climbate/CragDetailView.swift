@@ -53,6 +53,9 @@ struct CragDetailView: View {
         }
         .navigationTitle("Crag Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.climbChalk, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: { cragStore.toggle(displayCrag) }) {

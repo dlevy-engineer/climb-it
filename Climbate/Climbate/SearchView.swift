@@ -198,7 +198,7 @@ struct SearchView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundColor(isSelected ? .white : .climbStone)
+                .foregroundColor(isSelected ? .white : .climbGranite)
                 .frame(width: 36, height: 32)
                 .background(isSelected ? Color.climbRope : Color.clear)
                 .cornerRadius(ClimbRadius.small)
@@ -371,6 +371,7 @@ struct SearchResultRow: View {
 
 struct CragMapView: View {
     let crags: [Crag]
+    @State private var selectedCrag: Crag?
 
     @State private var position: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 39.8283, longitude: -98.5795), // US center
@@ -384,7 +385,9 @@ struct CragMapView: View {
                     latitude: crag.latitude,
                     longitude: crag.longitude
                 )) {
-                    CragMapPin(crag: crag)
+                    NavigationLink(destination: CragDetailView(crag: crag)) {
+                        CragMapPin(crag: crag)
+                    }
                 }
             }
         }
