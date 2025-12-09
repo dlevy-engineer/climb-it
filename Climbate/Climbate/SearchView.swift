@@ -35,6 +35,16 @@ struct SearchView: View {
         }
     }
 
+    /// Groups crags by state, sorted alphabetically by state name, then by full location hierarchy within each state
+    private var groupedResults: [(state: String, crags: [Crag])] {
+        // Sort by full location path to get proper alphabetical order within nested levels
+        let sorted = filteredResults.sorted { $0.location < $1.location }
+        let grouped = Dictionary(grouping: sorted) { $0.state }
+        return grouped.keys.sorted().map { state in
+            (state: state, crags: grouped[state] ?? [])
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -251,12 +261,9 @@ struct SearchView: View {
 
     private var resultsList: some View {
         ScrollView {
-            LazyVStack(spacing: ClimbSpacing.sm) {
-                ForEach(filteredResults) { crag in
-                    NavigationLink(destination: CragDetailView(crag: crag)) {
-                        SearchResultRow(crag: crag)
-                    }
-                    .buttonStyle(.plain)
+            LazyVStack(spacing: ClimbSpacing.md) {
+                ForEach(groupedResults, id: \.state) { group in
+                    DiscoverStateSection(state: group.state, crags: group.crags)
                 }
             }
             .padding(.horizontal, ClimbSpacing.md)
@@ -433,6 +440,42 @@ struct Triangle: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - Discover State Section (Compact)
+
+struct DiscoverStateSection: View {
+    let state: String
+    let crags: [Crag]
+    @EnvironmentObject var cragStore: CragStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ClimbSpacing.xs) {
+            // Compact section header
+            HStack(spacing: ClimbSpacing.sm) {
+                Text(state.uppercased())
+                    .font(ClimbTypography.micro)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.climbStone)
+                    .tracking(0.8)
+
+                Rectangle()
+                    .fill(Color.climbMist)
+                    .frame(height: 1)
+            }
+            .padding(.bottom, ClimbSpacing.xs)
+
+            // Crag rows
+            VStack(spacing: ClimbSpacing.sm) {
+                ForEach(crags) { crag in
+                    NavigationLink(destination: CragDetailView(crag: crag)) {
+                        SearchResultRow(crag: crag)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
