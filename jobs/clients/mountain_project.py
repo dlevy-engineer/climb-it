@@ -11,12 +11,27 @@ Scraping is done respectfully with:
 import structlog
 import time
 import random
+import re
 from dataclasses import dataclass
 from typing import Optional
-from tenacity import retry, stop_after_attempt, wait_exponential
 from playwright.sync_api import sync_playwright, Browser, Page, Error as PlaywrightError
 
 log = structlog.get_logger()
+
+
+# US States and territories - only scrape these
+US_STATES = {
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+    "maine", "maryland", "massachusetts", "michigan", "minnesota",
+    "mississippi", "missouri", "montana", "nebraska", "nevada",
+    "new-hampshire", "new-jersey", "new-mexico", "new-york",
+    "north-carolina", "north-dakota", "ohio", "oklahoma", "oregon",
+    "pennsylvania", "rhode-island", "south-carolina", "south-dakota",
+    "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+    "west-virginia", "wisconsin", "wyoming", "puerto-rico", "us-virgin-islands"
+}
 
 
 @dataclass
@@ -47,6 +62,7 @@ class MountainProjectScraper:
         self._browser: Optional[Browser] = None
         self._context = None
         self._request_count = 0
+        self._visited_urls: set[str] = set()  # Track visited URLs to avoid duplicates
 
     def _ensure_browser(self, force_restart: bool = False):
         """Lazily initialize browser on first use, or restart if crashed."""
@@ -118,11 +134,41 @@ class MountainProjectScraper:
     def __exit__(self, *args):
         self.close()
 
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL to prevent duplicates from trailing slashes, etc."""
+        url = url.rstrip('/')
+        if not url.startswith('http'):
+            url = f"{self.BASE_URL}{url}"
+        return url
+
+    def was_visited(self, url: str) -> bool:
+        """Check if URL was already visited."""
+        return self._normalize_url(url) in self._visited_urls
+
+    def mark_visited(self, url: str):
+        """Mark URL as visited."""
+        self._visited_urls.add(self._normalize_url(url))
+
+    def _is_browser_crash(self, error: Exception) -> bool:
+        """Check if an exception indicates a browser crash."""
+        error_msg = str(error).lower()
+        crash_indicators = [
+            "target closed",
+            "browser",
+            "context",
+            "crash",
+            "connection closed",
+            "protocol error",
+            "page closed",
+            "session closed",
+        ]
+        return any(indicator in error_msg for indicator in crash_indicators)
+
     def fetch_page(self, url: str, retry_count: int = 0) -> str:
         """Fetch a page with Playwright, waiting for content to load.
 
         Creates a fresh page for each request for stability.
-        Handles browser crashes by restarting and retrying.
+        Handles browser crashes by restarting the entire browser.
         """
         max_retries = 3
         page = None
@@ -131,13 +177,13 @@ class MountainProjectScraper:
             self._ensure_browser()
             log.debug("scraper_fetch", url=url)
 
-            # Random delay between requests (2-5 seconds)
-            delay = random.uniform(2.0, 5.0)
+            # Random delay between requests (2-4 seconds)
+            delay = random.uniform(2.0, 4.0)
             time.sleep(delay)
 
-            # Refresh context every 50 requests to prevent memory bloat
+            # Refresh context every 25 requests to prevent memory bloat
             self._request_count += 1
-            if self._request_count % 50 == 0:
+            if self._request_count % 25 == 0:
                 log.info("refreshing_browser_context", request_count=self._request_count)
                 self._create_context()
 
@@ -146,17 +192,20 @@ class MountainProjectScraper:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
             # Additional small delay after page load
-            time.sleep(random.uniform(0.5, 1.5))
+            time.sleep(random.uniform(0.3, 0.8))
 
             content = page.content()
             return content
 
-        except PlaywrightError as e:
-            error_msg = str(e).lower()
-            if retry_count < max_retries and ("target closed" in error_msg or "browser" in error_msg or "context" in error_msg or "crash" in error_msg):
+        except Exception as e:
+            # Catch ALL exceptions to handle browser crashes properly
+            if retry_count < max_retries and self._is_browser_crash(e):
                 log.warning("browser_crashed_restarting", url=url, retry=retry_count + 1, error=str(e))
-                # Wait longer before restart to avoid rate limiting
-                time.sleep(random.uniform(5.0, 10.0))
+                # Wait longer before restart (exponential backoff)
+                wait_time = 5.0 * (2 ** retry_count) + random.uniform(0, 5.0)
+                log.info("waiting_before_restart", seconds=wait_time)
+                time.sleep(wait_time)
+                # Force full browser restart
                 self._ensure_browser(force_restart=True)
                 return self.fetch_page(url, retry_count + 1)
             raise
@@ -169,91 +218,76 @@ class MountainProjectScraper:
                     pass
 
     def get_all_state_urls(self) -> list[tuple[str, str]]:
-        """Get all US state area URLs from the route guide."""
+        """Get all top-level area URLs from the route guide (deduplicated)."""
         from bs4 import BeautifulSoup
 
         html = self.fetch_page(self.AREAS_URL)
         soup = BeautifulSoup(html, "html.parser")
 
-        states = []
-        # Find the US states section
+        areas = []
+        seen_urls = set()
+
+        # Find all area links, deduplicated
         for link in soup.select('a[href*="/area/"]'):
             href = link.get("href", "")
             name = link.get_text(strip=True)
 
-            if "/area/" in href and name:
-                full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
-                states.append((name, full_url))
-
-        log.info("states_found", count=len(states))
-        return states
-
-    def get_areas_from_listing(self, listing_url: str) -> list[MPArea]:
-        """
-        Extract area information from a listing page.
-        """
-        from bs4 import BeautifulSoup
-        import re
-
-        html = self.fetch_page(listing_url)
-        soup = BeautifulSoup(html, "html.parser")
-
-        areas = []
-
-        # Find area cards/links
-        for card in soup.select('.lef-nav-row, .mp-sidebar a[href*="/area/"]'):
-            link = card if card.name == "a" else card.find("a")
-            if not link:
+            if not href or not name:
                 continue
 
-            href = link.get("href", "")
-            name = link.get_text(strip=True)
+            # Normalize URL
+            full_url = self._normalize_url(href)
 
-            if "/area/" in href and name:
-                # Extract area ID from URL
-                match = re.search(r"/area/(\d+)/", href)
-                area_id = int(match.group(1)) if match else None
+            # Skip if already seen (deduplication)
+            if full_url in seen_urls:
+                continue
 
-                full_url = href if href.startswith("http") else f"{self.BASE_URL}{href}"
+            # Must have area ID in URL
+            if not re.search(r'/area/\d+/', href):
+                continue
 
-                areas.append(MPArea(
-                    id=area_id or hash(full_url),
-                    name=name,
-                    latitude=0.0,  # Will be filled in later
-                    longitude=0.0,
-                    url=full_url,
-                ))
+            seen_urls.add(full_url)
+            areas.append((name, full_url))
 
-        log.info("areas_from_listing", url=listing_url, count=len(areas))
+        log.info("top_level_areas_found", count=len(areas))
         return areas
 
-    def get_area_details(self, area_url: str) -> Optional[MPArea]:
-        """Get detailed information about a specific area including coordinates."""
+    def get_area_with_children(self, area_url: str) -> tuple[Optional[MPArea], list[MPArea]]:
+        """
+        Fetch an area page and extract BOTH coordinates AND child areas in one request.
+
+        Returns (area_with_coords_or_none, list_of_child_areas)
+        """
         from bs4 import BeautifulSoup
-        import re
+
+        url = self._normalize_url(area_url)
+
+        # Skip if already visited
+        if self.was_visited(url):
+            log.debug("skipping_visited_url", url=url)
+            return None, []
+
+        self.mark_visited(url)
 
         try:
-            html = self.fetch_page(area_url)
+            html = self.fetch_page(url)
         except Exception as e:
-            log.warning("area_fetch_failed", url=area_url, error=str(e))
-            return None
+            log.warning("area_fetch_failed", url=url, error=str(e))
+            return None, []
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # Extract name (exclude nested elements like <small>Rock Climbing</small>)
+        # Extract name
         h1 = soup.find("h1")
         if h1:
-            # Get only direct text, not text from nested elements
             texts = h1.find_all(string=True, recursive=False)
-            # Filter out empty strings and take first meaningful text
             name = next((t.strip() for t in texts if t.strip()), None)
             if not name:
-                # Fallback: get first line of text content
                 name = h1.get_text(strip=True).split('\n')[0].strip()
         else:
             name = "Unknown"
 
-        # Extract coordinates from GPS table row using regex
+        # Extract coordinates from GPS table row
         lat, lon = None, None
         for row in soup.find_all("tr"):
             label = row.find("td")
@@ -261,7 +295,6 @@ class MountainProjectScraper:
                 value_td = label.find_next_sibling("td")
                 if value_td:
                     gps_text = value_td.get_text(strip=True)
-                    # Use regex to extract coordinates (handles "Google" suffix)
                     coord_match = re.search(r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", gps_text)
                     if coord_match:
                         try:
@@ -271,8 +304,8 @@ class MountainProjectScraper:
                             pass
 
         # Extract area ID
-        match = re.search(r"/area/(\d+)/", area_url)
-        area_id = int(match.group(1)) if match else hash(area_url)
+        match = re.search(r"/area/(\d+)/", url)
+        area_id = int(match.group(1)) if match else hash(url)
 
         # Extract location hierarchy from breadcrumbs
         path = []
@@ -281,16 +314,61 @@ class MountainProjectScraper:
             for a in breadcrumb.find_all("a"):
                 path.append(a.get_text(strip=True))
 
-        if lat is None or lon is None:
-            log.debug("area_no_coordinates", url=area_url, name=name)
-            return None
+        # Build area object if we have coordinates
+        area = None
+        if lat is not None and lon is not None:
+            log.info("area_details_found", name=name, lat=lat, lon=lon)
+            area = MPArea(
+                id=area_id,
+                name=name,
+                latitude=lat,
+                longitude=lon,
+                url=url,
+                path=path,
+            )
 
-        log.info("area_details_found", name=name, lat=lat, lon=lon)
-        return MPArea(
-            id=area_id,
-            name=name,
-            latitude=lat,
-            longitude=lon,
-            url=area_url,
-            path=path,
-        )
+        # Extract child areas from the same page (no extra request!)
+        children = []
+        seen_child_urls = set()
+
+        # Look for child area links in the left nav
+        for link in soup.select('.lef-nav-row a[href*="/area/"]'):
+            href = link.get("href", "")
+            child_name = link.get_text(strip=True)
+
+            if not href or not child_name:
+                continue
+
+            child_url = self._normalize_url(href)
+
+            # Skip duplicates and already-visited URLs
+            if child_url in seen_child_urls or self.was_visited(child_url):
+                continue
+
+            seen_child_urls.add(child_url)
+
+            # Extract child area ID
+            child_match = re.search(r"/area/(\d+)/", href)
+            child_id = int(child_match.group(1)) if child_match else hash(child_url)
+
+            children.append(MPArea(
+                id=child_id,
+                name=child_name,
+                latitude=0.0,
+                longitude=0.0,
+                url=child_url,
+            ))
+
+        log.debug("area_children_found", url=url, count=len(children))
+        return area, children
+
+    # Keep old methods for backwards compatibility but mark as deprecated
+    def get_areas_from_listing(self, listing_url: str) -> list[MPArea]:
+        """DEPRECATED: Use get_area_with_children instead."""
+        _, children = self.get_area_with_children(listing_url)
+        return children
+
+    def get_area_details(self, area_url: str) -> Optional[MPArea]:
+        """DEPRECATED: Use get_area_with_children instead."""
+        area, _ = self.get_area_with_children(area_url)
+        return area

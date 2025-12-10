@@ -142,6 +142,28 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
+# ECS Exec permissions for SSH-like access to containers
+resource "aws_iam_role_policy" "ecs_exec" {
+  name = "${local.name_prefix}-ecs-exec"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/ecs/${local.name_prefix}-api"

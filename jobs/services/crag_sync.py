@@ -1,8 +1,8 @@
 """Service for syncing crags from Mountain Project."""
 import uuid
-import time
 import structlog
 from typing import Optional
+from collections import deque
 
 from sqlalchemy.dialects.mysql import insert
 
@@ -24,15 +24,27 @@ def build_location_hierarchy(path: list[str]) -> dict:
     if not path:
         return {}
 
+    # Filter out "All Locations" and empty strings
+    filtered = [p for p in path if p and p != "All Locations"]
+    if not filtered:
+        return {}
+
     result = None
-    for name in reversed(path):
+    for name in reversed(filtered):
         result = {"name": name, "child": result}
 
     return result or {}
 
 
 class CragSyncService:
-    """Service for synchronizing crags from Mountain Project."""
+    """Service for synchronizing crags from Mountain Project.
+
+    Uses breadth-first traversal to efficiently scrape crags:
+    - One HTTP request per area (extracts coords AND children together)
+    - Global URL deduplication prevents redundant requests
+    - Immediate upserts when crags are found (no batching delay)
+    - US-only filtering to skip international areas
+    """
 
     def __init__(self):
         self.settings = get_settings()
@@ -56,9 +68,13 @@ class CragSyncService:
 
     def sync_all(self, max_areas: Optional[int] = None) -> dict:
         """
-        Full sync of all areas from Mountain Project.
+        Full sync of all US areas from Mountain Project.
 
-        Processes and saves crags as it goes - no waiting for full collection.
+        Uses breadth-first search to traverse the area hierarchy:
+        1. Get US states from route guide
+        2. For each state, do BFS through child areas
+        3. When an area has coordinates, save it immediately
+        4. When no coordinates, add children to queue for processing
 
         Args:
             max_areas: Optional limit on number of areas to process
@@ -68,50 +84,20 @@ class CragSyncService:
         """
         log.info("crag_sync_starting")
 
-        # Get all state/region URLs
+        # Get US state URLs (filtered, deduplicated)
         state_urls = self.scraper.get_all_state_urls()
         log.info("states_to_process", count=len(state_urls))
 
-        total_areas_processed = 0
-
-        # Process each state and save crags immediately
+        # Process each state
         for state_name, state_url in state_urls:
-            if max_areas and total_areas_processed >= max_areas:
+            if max_areas and self.stats["areas_processed"] >= max_areas:
                 log.info("max_areas_reached", max=max_areas)
                 break
 
             try:
-                # Get areas for this state
-                areas = self.scraper.get_areas_from_listing(state_url)
-                log.info("state_areas_found", state=state_name, areas=len(areas))
-
-                # Process this state's areas immediately (stream processing)
-                batch = []
-                for area in areas:
-                    if max_areas and total_areas_processed >= max_areas:
-                        break
-
-                    try:
-                        found = self._process_area_recursive(area.url, batch, max_depth=3)
-                        total_areas_processed += 1
-
-                        # Save batch when it reaches threshold
-                        if len(batch) >= self.settings.batch_size:
-                            self._upsert_batch(batch)
-                            batch = []
-
-                    except Exception as e:
-                        log.error("area_failed", url=area.url, error=str(e))
-                        self.stats["errors"] += 1
-
-                # Save remaining batch for this state
-                if batch:
-                    self._upsert_batch(batch)
-
+                self._process_state(state_name, state_url, max_areas)
                 self.stats["states_processed"] += 1
                 log.info("state_complete", state=state_name, **self.stats)
-
-                time.sleep(self.settings.request_delay_seconds)
 
             except Exception as e:
                 log.error("state_failed", state=state_name, error=str(e))
@@ -120,136 +106,96 @@ class CragSyncService:
         log.info("crag_sync_complete", **self.stats)
         return self.stats
 
-    def _process_area_recursive(self, url: str, batch: list, max_depth: int = 3) -> bool:
+    def _process_state(self, state_name: str, state_url: str, max_areas: Optional[int]):
+        """Process a single state using breadth-first search.
+
+        BFS ensures we process areas level by level, which is more predictable
+        and allows early termination when hitting max_areas.
         """
-        Process an area, recursively drilling into sub-areas if no coords found.
+        # Queue holds (url, depth) tuples
+        queue: deque[tuple[str, int]] = deque()
+        queue.append((state_url, 0))
 
-        Returns True if at least one crag with coords was found.
-        """
-        if max_depth <= 0:
-            return False
+        max_depth = 4  # Don't go deeper than 4 levels
 
-        self.stats["areas_processed"] += 1
-        time.sleep(self.settings.request_delay_seconds)
+        while queue:
+            if max_areas and self.stats["areas_processed"] >= max_areas:
+                break
 
-        # Try to get details with coordinates
-        details = self.scraper.get_area_details(url)
-        if details and details.latitude and details.longitude:
-            batch.append(details)
-            self.stats["crags_found"] += 1
-            log.debug("crag_found", url=url, name=details.name)
-            return True
+            url, depth = queue.popleft()
 
-        # No coords - drill into sub-areas
-        log.debug("drilling_into_subareas", url=url, depth=max_depth)
-        sub_areas = self.scraper.get_areas_from_listing(url)
+            # Skip if too deep
+            if depth > max_depth:
+                continue
 
-        found_any = False
-        for sub in sub_areas[:10]:  # Limit sub-areas to avoid explosion
             try:
-                if self._process_area_recursive(sub.url, batch, max_depth - 1):
-                    found_any = True
+                # Single request gets BOTH coordinates AND children
+                area, children = self.scraper.get_area_with_children(url)
+                self.stats["areas_processed"] += 1
 
-                # Save batch if it gets large (stream saves)
-                if len(batch) >= self.settings.batch_size:
-                    self._upsert_batch(batch)
-                    batch.clear()
+                # If area has coordinates, save it immediately
+                if area:
+                    self._upsert_crag(area)
+                    self.stats["crags_found"] += 1
+
+                # Add children to queue for processing (only if we didn't find coords
+                # or if we want to go deeper for sub-crags)
+                if not area or depth < 2:  # Always drill down first 2 levels
+                    for child in children:
+                        if not self.scraper.was_visited(child.url):
+                            queue.append((child.url, depth + 1))
 
             except Exception as e:
-                log.warning("sub_area_failed", url=sub.url, error=str(e))
+                log.warning("area_failed", url=url, error=str(e))
                 self.stats["errors"] += 1
 
-        return found_any
-
-    def sync_area(self, area_url: str) -> Optional[Crag]:
-        """Sync a single area by URL."""
-        details = self.scraper.get_area_details(area_url)
-
-        if not details or not details.latitude or not details.longitude:
-            log.warning("area_no_coordinates", url=area_url)
-            return None
-
-        return self._upsert_single(details)
-
-    def _upsert_batch(self, areas: list) -> int:
-        """Upsert a batch of areas to the database."""
-        if not areas:
-            return 0
-
-        session = get_session()
-        count = 0
-
-        try:
-            for area in areas:
-                crag_id = generate_deterministic_uuid(area.url)
-
-                record = {
-                    "id": crag_id,
-                    "url": area.url,
-                    "name": area.name,
-                    "latitude": area.latitude,
-                    "longitude": area.longitude,
-                    "location_hierarchy_json": build_location_hierarchy(area.path or []),
-                    "safety_status": "UNKNOWN",  # Default until weather is fetched
-                }
-
-                stmt = insert(Crag).values(**record)
-                upsert_stmt = stmt.on_duplicate_key_update(
-                    name=stmt.inserted.name,
-                    latitude=stmt.inserted.latitude,
-                    longitude=stmt.inserted.longitude,
-                    location_hierarchy_json=stmt.inserted.location_hierarchy_json,
-                )
-
-                session.execute(upsert_stmt)
-                count += 1
-
-            session.commit()
-            self.stats["crags_upserted"] += count
-            log.info("batch_upserted", count=count, total=self.stats["crags_upserted"])
-
-        except Exception as e:
-            session.rollback()
-            log.error("batch_upsert_failed", error=str(e))
-            raise
-        finally:
-            session.close()
-
-        return count
-
-    def _upsert_single(self, area) -> Optional[Crag]:
-        """Upsert a single area."""
+    def _upsert_crag(self, area) -> bool:
+        """Upsert a single crag immediately (no batching)."""
         session = get_session()
 
         try:
             crag_id = generate_deterministic_uuid(area.url)
 
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            record = {
+                "id": crag_id,
+                "url": area.url,
+                "name": area.name,
+                "latitude": area.latitude,
+                "longitude": area.longitude,
+                "location_hierarchy_json": build_location_hierarchy(area.path or []),
+                "safety_status": "UNKNOWN",
+            }
 
-            if crag:
-                crag.name = area.name
-                crag.latitude = area.latitude
-                crag.longitude = area.longitude
-                crag.location_hierarchy_json = build_location_hierarchy(area.path or [])
-            else:
-                crag = Crag(
-                    id=crag_id,
-                    url=area.url,
-                    name=area.name,
-                    latitude=area.latitude,
-                    longitude=area.longitude,
-                    location_hierarchy_json=build_location_hierarchy(area.path or []),
-                    safety_status="UNKNOWN",
-                )
-                session.add(crag)
+            stmt = insert(Crag).values(**record)
+            upsert_stmt = stmt.on_duplicate_key_update(
+                name=stmt.inserted.name,
+                latitude=stmt.inserted.latitude,
+                longitude=stmt.inserted.longitude,
+                location_hierarchy_json=stmt.inserted.location_hierarchy_json,
+            )
 
+            session.execute(upsert_stmt)
             session.commit()
-            session.refresh(crag)
-            return crag
+            self.stats["crags_upserted"] += 1
+
+            log.debug("crag_upserted", name=area.name, url=area.url)
+            return True
 
         except Exception as e:
             session.rollback()
-            log.error("single_upsert_failed", error=str(e))
-            raise
+            log.error("crag_upsert_failed", url=area.url, error=str(e))
+            return False
         finally:
             session.close()
+
+    def sync_area(self, area_url: str) -> Optional[Crag]:
+        """Sync a single area by URL."""
+        area, _ = self.scraper.get_area_with_children(area_url)
+
+        if not area:
+            log.warning("area_no_coordinates", url=area_url)
+            return None
+
+        if self._upsert_crag(area):
+            return area
+        return None
