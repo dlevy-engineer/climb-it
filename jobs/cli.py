@@ -49,7 +49,7 @@ def cli(verbose):
 
 @cli.command()
 @click.option("--max-areas", "-m", type=int, default=None, help="Max areas to process")
-@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="openbeta", help="Data source")
+@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="mountain-project", help="Data source")
 def sync_crags(max_areas, source):
     """Sync crags from Mountain Project or OpenBeta."""
     log.info("Starting crag sync", max_areas=max_areas, source=source)
@@ -103,7 +103,7 @@ def calculate_safety():
 @cli.command()
 @click.option("--max-areas", "-m", type=int, default=None, help="Max areas to process (crag sync)")
 @click.option("--days", "-d", type=int, default=14, help="Days of weather history")
-@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="openbeta", help="Data source for crags")
+@click.option("--source", "-s", type=click.Choice(["mountain-project", "openbeta"]), default="mountain-project", help="Data source for crags")
 def run_all(max_areas, days, source):
     """Run full sync: crags -> weather -> safety calculation."""
     from services import WeatherSyncService, SafetyCalculator
