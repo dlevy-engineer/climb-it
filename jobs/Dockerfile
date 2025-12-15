@@ -33,4 +33,4 @@ COPY . .
 
 # Default command runs full sync
 ENTRYPOINT ["python", "-m", "cli"]
-CMD ["run-all", "--max-areas", "1000"]
+CMD ["run-all"]
