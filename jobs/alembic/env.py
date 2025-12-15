@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_settings
 from db.database import Base
-from db.models import Crag, Precipitation  # Import models to register them
+from db.models import Area, Precipitation  # Import models to register them
 
 config = context.config
 
