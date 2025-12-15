@@ -106,6 +106,29 @@ class APIClient {
         return try await fetch(from: components.url!)
     }
 
+    // MARK: - Hierarchical Areas API
+
+    /// Fetch top-level areas (states) or children of a parent area
+    func fetchAreas(parentId: String? = nil) async throws -> [Area] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("areas"), resolvingAgainstBaseURL: false)!
+        if let parentId = parentId {
+            components.queryItems = [URLQueryItem(name: "parent_id", value: parentId)]
+        }
+        return try await fetch(from: components.url!)
+    }
+
+    /// Fetch children of a specific area
+    func fetchAreaChildren(areaId: String) async throws -> [Area] {
+        let url = baseURL.appendingPathComponent("areas/\(areaId)/children")
+        return try await fetch(from: url)
+    }
+
+    /// Fetch breadcrumb path for an area
+    func fetchAreaBreadcrumb(areaId: String) async throws -> [Area] {
+        let url = baseURL.appendingPathComponent("areas/\(areaId)/breadcrumb")
+        return try await fetch(from: url)
+    }
+
     /// Health check
     func healthCheck() async throws -> Bool {
         let url = baseURL.appendingPathComponent("health")

@@ -17,7 +17,35 @@ class PrecipitationData(BaseModel):
     days_since_rain: Optional[int] = Field(default=None, description="Days since last rain")
 
 
+# --- Area (Hierarchy) Models ---
+
+class AreaResponse(BaseModel):
+    """Response for a single area in the hierarchy."""
+    id: str
+    name: str
+    parent_id: Optional[str] = None
+    has_children: bool = Field(description="Whether this area has child areas")
+    is_crag: bool = Field(description="Whether this is a crag (has coordinates)")
+    # Only present if is_crag is True
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    safety_status: Optional[SafetyStatusEnum] = None
+    google_maps_url: Optional[str] = None
+    mountain_project_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AreaDetailResponse(AreaResponse):
+    """Detailed area response with precipitation data."""
+    precipitation: Optional[PrecipitationData] = None
+    children: list["AreaResponse"] = Field(default_factory=list)
+
+
+# --- Legacy Crag Models (for backwards compatibility) ---
+
 class CragResponse(BaseModel):
+    """Response for a crag (area with coordinates)."""
     id: str
     name: str
     location: str = Field(description="Formatted location string from hierarchy")

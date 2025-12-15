@@ -1,3 +1,9 @@
+"""
+Crags API - Legacy flat list of climbing areas with coordinates.
+
+For backwards compatibility with the iOS app.
+New clients should use /areas for hierarchical navigation.
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -5,7 +11,7 @@ from typing import Optional
 from datetime import datetime, timedelta, date
 import httpx
 
-from db import get_db, ODSCrag, ODSCragPrecipitation
+from db import get_db, ODSArea, ODSAreaPrecipitation
 from models import (
     CragResponse,
     CragDetailResponse,
@@ -19,33 +25,35 @@ from models import (
 router = APIRouter(prefix="/crags", tags=["crags"])
 
 
-def format_location(hierarchy: dict | None) -> str:
-    """Convert nested location hierarchy to readable string like 'California > Yosemite'"""
-    if not hierarchy:
-        return "Unknown"
-
+def build_location_path(area: ODSArea, db: Session) -> str:
+    """Build location string by walking up the parent hierarchy."""
     parts = []
-    current = hierarchy
+    current = area
+
+    # Walk up the tree to build path
     while current:
-        if "name" in current:
-            name = current["name"]
-            # Skip "All Locations" prefix
-            if name != "All Locations":
-                parts.append(name)
-        current = current.get("child")
+        parts.append(current.name)
+        if current.parent_id:
+            current = db.query(ODSArea).filter(ODSArea.id == current.parent_id).first()
+        else:
+            current = None
 
-    return " > ".join(parts) if parts else "Unknown"
+    # Reverse to get root-to-leaf order, skip the crag itself
+    parts.reverse()
+    if len(parts) > 1:
+        return " > ".join(parts[:-1])  # All except the last (crag name)
+    return parts[0] if parts else "Unknown"
 
 
-def crag_to_response(crag: ODSCrag) -> CragResponse:
-    """Convert ORM model to Pydantic response"""
+def crag_to_response(crag: ODSArea, db: Session) -> CragResponse:
+    """Convert ORM model to Pydantic response."""
     return CragResponse(
         id=crag.id,
         name=crag.name,
-        location=format_location(crag.location_hierarchy_json),
+        location=build_location_path(crag, db),
         latitude=float(crag.latitude),
         longitude=float(crag.longitude),
-        safety_status=crag.safety_status.value if crag.safety_status else "CAUTION",
+        safety_status=crag.safety_status.value if crag.safety_status else "UNKNOWN",
         google_maps_url=crag.google_maps_url,
         mountain_project_url=crag.url,
     )
@@ -57,18 +65,20 @@ def list_crags(
     per_page: int = Query(100, ge=1, le=1000, description="Items per page"),
     db: Session = Depends(get_db),
 ):
-    """List all crags with pagination"""
+    """List all crags (areas with coordinates) with pagination."""
     offset = (page - 1) * per_page
 
+    # Only return areas that have coordinates (actual crags)
     crags = (
-        db.query(ODSCrag)
-        .order_by(ODSCrag.name)
+        db.query(ODSArea)
+        .filter(ODSArea.latitude.isnot(None))
+        .order_by(ODSArea.name)
         .offset(offset)
         .limit(per_page)
         .all()
     )
 
-    return [crag_to_response(c) for c in crags]
+    return [crag_to_response(c, db) for c in crags]
 
 
 @router.get("/search", response_model=list[CragResponse])
@@ -77,22 +87,20 @@ def search_crags(
     limit: int = Query(20, ge=1, le=50, description="Max results"),
     db: Session = Depends(get_db),
 ):
-    """Search crags by name or location"""
+    """Search crags by name."""
     search_term = f"%{q}%"
 
     crags = (
-        db.query(ODSCrag)
+        db.query(ODSArea)
         .filter(
-            or_(
-                ODSCrag.name.ilike(search_term),
-                func.json_extract(ODSCrag.location_hierarchy_json, "$.name").like(search_term),
-            )
+            ODSArea.latitude.isnot(None),  # Only crags with coordinates
+            ODSArea.name.ilike(search_term),
         )
         .limit(limit)
         .all()
     )
 
-    return [crag_to_response(c) for c in crags]
+    return [crag_to_response(c, db) for c in crags]
 
 
 @router.get("/nearby", response_model=list[CragResponse])
@@ -103,57 +111,60 @@ def nearby_crags(
     limit: int = Query(20, ge=1, le=50, description="Max results"),
     db: Session = Depends(get_db),
 ):
-    """Find crags within a radius of given coordinates using Haversine formula"""
+    """Find crags within a radius of given coordinates using Haversine formula."""
     # Haversine formula in SQL (approximate, good enough for nearby search)
-    # 6371 = Earth's radius in km
     distance_expr = (
         6371
         * func.acos(
             func.cos(func.radians(lat))
-            * func.cos(func.radians(ODSCrag.latitude))
-            * func.cos(func.radians(ODSCrag.longitude) - func.radians(lon))
-            + func.sin(func.radians(lat)) * func.sin(func.radians(ODSCrag.latitude))
+            * func.cos(func.radians(ODSArea.latitude))
+            * func.cos(func.radians(ODSArea.longitude) - func.radians(lon))
+            + func.sin(func.radians(lat)) * func.sin(func.radians(ODSArea.latitude))
         )
     )
 
     crags = (
-        db.query(ODSCrag)
+        db.query(ODSArea)
+        .filter(ODSArea.latitude.isnot(None))  # Only crags
         .filter(distance_expr <= radius_km)
         .order_by(distance_expr)
         .limit(limit)
         .all()
     )
 
-    return [crag_to_response(c) for c in crags]
+    return [crag_to_response(c, db) for c in crags]
 
 
 @router.get("/{crag_id}", response_model=CragDetailResponse)
 def get_crag(crag_id: str, db: Session = Depends(get_db)):
-    """Get detailed crag info including precipitation data"""
-    crag = db.query(ODSCrag).filter(ODSCrag.id == crag_id).first()
+    """Get detailed crag info including precipitation data."""
+    crag = db.query(ODSArea).filter(ODSArea.id == crag_id).first()
 
     if not crag:
         raise HTTPException(status_code=404, detail="Crag not found")
+
+    if crag.latitude is None:
+        raise HTTPException(status_code=400, detail="This area is not a crag (no coordinates)")
 
     # Calculate precipitation stats
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
 
     precip_7_days = (
-        db.query(func.sum(ODSCragPrecipitation.precipitation_mm))
+        db.query(func.sum(ODSAreaPrecipitation.precipitation_mm))
         .filter(
-            ODSCragPrecipitation.crag_id == crag_id,
-            ODSCragPrecipitation.recorded_at >= seven_days_ago,
+            ODSAreaPrecipitation.area_id == crag_id,
+            ODSAreaPrecipitation.recorded_at >= seven_days_ago,
         )
         .scalar()
     ) or 0.0
 
     last_rain = (
-        db.query(ODSCragPrecipitation)
+        db.query(ODSAreaPrecipitation)
         .filter(
-            ODSCragPrecipitation.crag_id == crag_id,
-            ODSCragPrecipitation.precipitation_mm > 0,
+            ODSAreaPrecipitation.area_id == crag_id,
+            ODSAreaPrecipitation.precipitation_mm > 0,
         )
-        .order_by(ODSCragPrecipitation.recorded_at.desc())
+        .order_by(ODSAreaPrecipitation.recorded_at.desc())
         .first()
     )
 
@@ -170,14 +181,14 @@ def get_crag(crag_id: str, db: Session = Depends(get_db)):
     return CragDetailResponse(
         id=crag.id,
         name=crag.name,
-        location=format_location(crag.location_hierarchy_json),
+        location=build_location_path(crag, db),
         latitude=float(crag.latitude),
         longitude=float(crag.longitude),
-        safety_status=crag.safety_status.value if crag.safety_status else "CAUTION",
+        safety_status=crag.safety_status.value if crag.safety_status else "UNKNOWN",
         google_maps_url=crag.google_maps_url,
         mountain_project_url=crag.url,
         precipitation=precipitation,
-        location_hierarchy=crag.location_hierarchy_json,
+        location_hierarchy=None,  # Deprecated
     )
 
 
@@ -190,13 +201,11 @@ WEEKLY_PRECIP_UNSAFE_MM = 25.0
 
 def calculate_safety_status(total_7_days_mm: float, days_since_rain: Optional[int]) -> SafetyStatusEnum:
     """Apply safety rules to determine status."""
-    # UNSAFE conditions
     if total_7_days_mm >= WEEKLY_PRECIP_UNSAFE_MM:
         return SafetyStatusEnum.UNSAFE
     if days_since_rain is not None and days_since_rain <= CAUTION_DAYS_THRESHOLD:
         return SafetyStatusEnum.UNSAFE
 
-    # CAUTION conditions
     if total_7_days_mm >= WEEKLY_PRECIP_CAUTION_MM:
         return SafetyStatusEnum.CAUTION
     if days_since_rain is not None and days_since_rain <= SAFE_DAYS_THRESHOLD:
@@ -223,19 +232,22 @@ async def get_crag_forecast(
     db: Session = Depends(get_db),
 ):
     """Get safety forecast for a crag with daily predictions."""
-    crag = db.query(ODSCrag).filter(ODSCrag.id == crag_id).first()
+    crag = db.query(ODSArea).filter(ODSArea.id == crag_id).first()
     if not crag:
         raise HTTPException(status_code=404, detail="Crag not found")
+
+    if crag.latitude is None:
+        raise HTTPException(status_code=400, detail="This area is not a crag (no coordinates)")
 
     # Get historical precipitation for context
     cutoff = datetime.utcnow() - timedelta(days=14)
     precip_records = (
-        db.query(ODSCragPrecipitation)
+        db.query(ODSAreaPrecipitation)
         .filter(
-            ODSCragPrecipitation.crag_id == crag_id,
-            ODSCragPrecipitation.recorded_at >= cutoff,
+            ODSAreaPrecipitation.area_id == crag_id,
+            ODSAreaPrecipitation.recorded_at >= cutoff,
         )
-        .order_by(ODSCragPrecipitation.recorded_at.desc())
+        .order_by(ODSAreaPrecipitation.recorded_at.desc())
         .all()
     )
 
@@ -278,10 +290,8 @@ async def get_crag_forecast(
         forecast_date = datetime.fromisoformat(date_str).date()
         precip_mm = precip[i] if i < len(precip) and precip[i] is not None else 0.0
 
-        # Add this day's forecast to combined data
         combined_precip.append((forecast_date, precip_mm))
 
-        # Calculate 7-day rolling sum
         rolling_sum = 0.0
         days_since_rain = None
 
@@ -294,7 +304,6 @@ async def get_crag_forecast(
 
         status = calculate_safety_status(rolling_sum, days_since_rain)
 
-        # Track first safe date
         if estimated_safe_date is None and status == SafetyStatusEnum.SAFE:
             estimated_safe_date = forecast_date
 

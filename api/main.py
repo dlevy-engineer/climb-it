@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
 
-from routers import crags_router
+from routers import crags_router, areas_router
 from db.database import get_engine, Base
 
 
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Climbate API",
     description="API for the Climbate rock climbing safety app",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -33,7 +33,8 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(crags_router)
+app.include_router(areas_router)  # New hierarchical API
+app.include_router(crags_router)  # Legacy flat API for backwards compatibility
 
 
 @app.get("/health")
@@ -47,4 +48,6 @@ def root():
         "message": "Welcome to Climbate API",
         "docs": "/docs",
         "health": "/health",
+        "areas": "/areas",
+        "crags": "/crags",
     }

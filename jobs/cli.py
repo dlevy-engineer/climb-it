@@ -170,20 +170,20 @@ def init_db():
 
 @cli.command()
 def clear_crags():
-    """Clear all crags and weather data from the database."""
+    """Clear all areas and weather data from the database."""
     from db.database import get_session
     from sqlalchemy import text
 
-    log.info("Clearing all crags and weather data")
+    log.info("Clearing all areas and weather data")
 
     session = get_session()
     try:
-        # Count existing crags
-        count = session.execute(text('SELECT COUNT(*) FROM ods_crags')).scalar()
-        log.info("current_crag_count", count=count)
+        # Count existing areas
+        count = session.execute(text('SELECT COUNT(*) FROM ods_areas')).scalar()
+        log.info("current_area_count", count=count)
 
         # Clear all dependent tables first (foreign key constraints)
-        dependent_tables = ['ods_weather', 'ods_precipitation']
+        dependent_tables = ['ods_precipitation']
         for table in dependent_tables:
             try:
                 session.execute(text(f'DELETE FROM {table}'))
@@ -191,14 +191,14 @@ def clear_crags():
             except Exception:
                 log.info("table_not_found", table=table, note="skipping")
 
-        # Then clear crags
-        session.execute(text('DELETE FROM ods_crags'))
+        # Then clear areas
+        session.execute(text('DELETE FROM ods_areas'))
         session.commit()
-        log.info("cleared_all_crags")
+        log.info("cleared_all_areas")
 
         # Verify
-        count = session.execute(text('SELECT COUNT(*) FROM ods_crags')).scalar()
-        log.info("crag_count_after_clear", count=count)
+        count = session.execute(text('SELECT COUNT(*) FROM ods_areas')).scalar()
+        log.info("area_count_after_clear", count=count)
     except Exception as e:
         session.rollback()
         log.error("clear_failed", error=str(e))

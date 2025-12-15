@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 from sqlalchemy.dialects.mysql import insert
 
 from config import get_settings
-from db import get_session, Crag, Precipitation
+from db import get_session, Area, Precipitation
 from clients import OpenMeteoClient
 
 log = structlog.get_logger()
@@ -35,7 +35,7 @@ class WeatherSyncService:
 
     def sync_all_crags(self, days: int = 14, limit: int = None) -> dict:
         """
-        Fetch weather data for all crags.
+        Fetch weather data for all crags (areas with coordinates).
 
         Args:
             days: Number of days of history to fetch
@@ -49,7 +49,8 @@ class WeatherSyncService:
         session = get_session()
 
         try:
-            query = session.query(Crag)
+            # Only query areas with coordinates (actual crags)
+            query = session.query(Area).filter(Area.latitude.isnot(None))
             if limit:
                 query = query.limit(limit)
 
@@ -85,7 +86,7 @@ class WeatherSyncService:
         session = get_session()
 
         try:
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            crag = session.query(Area).filter(Area.id == crag_id).first()
             if not crag:
                 raise ValueError(f"Crag not found: {crag_id}")
 
@@ -97,8 +98,8 @@ class WeatherSyncService:
         finally:
             session.close()
 
-    def _sync_crag_weather(self, session, crag: Crag, days: int):
-        """Fetch and store weather for a single crag."""
+    def _sync_crag_weather(self, session, crag: Area, days: int):
+        """Fetch and store weather for a single crag (area with coordinates)."""
         # Calculate date range (Open-Meteo has ~5 day delay)
         end_date = date.today() - timedelta(days=5)
         start_date = end_date - timedelta(days=days)
@@ -112,7 +113,7 @@ class WeatherSyncService:
 
         for w in weather_data:
             record = {
-                "crag_id": crag.id,
+                "area_id": crag.id,
                 "recorded_at": datetime.combine(w.date, datetime.min.time()),
                 "precipitation_mm": w.precipitation_mm,
                 "temperature_max_c": w.temperature_max_c,
@@ -136,7 +137,7 @@ class WeatherSyncService:
         session = get_session()
 
         try:
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            crag = session.query(Area).filter(Area.id == crag_id).first()
             if not crag:
                 return {"error": "Crag not found"}
 
@@ -144,7 +145,7 @@ class WeatherSyncService:
 
             records = (
                 session.query(Precipitation)
-                .filter(Precipitation.crag_id == crag_id)
+                .filter(Precipitation.area_id == crag_id)
                 .filter(Precipitation.recorded_at >= cutoff)
                 .order_by(Precipitation.recorded_at.desc())
                 .all()

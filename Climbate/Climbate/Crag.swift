@@ -7,6 +7,81 @@
 
 import Foundation
 
+// MARK: - Area Model (Hierarchical Navigation)
+
+/// Represents a location in the Mountain Project hierarchy.
+/// Can be a state, region, sub-region, or crag (leaf node with coordinates).
+struct Area: Identifiable, Codable, Equatable {
+    let id: String
+    let name: String
+    let parentId: String?
+    let hasChildren: Bool
+    let isCrag: Bool
+    let latitude: Double?
+    let longitude: Double?
+    let safetyStatus: Crag.SafetyStatus?
+    let googleMapsUrl: String?
+    let mountainProjectUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, latitude, longitude
+        case parentId = "parent_id"
+        case hasChildren = "has_children"
+        case isCrag = "is_crag"
+        case safetyStatus = "safety_status"
+        case googleMapsUrl = "google_maps_url"
+        case mountainProjectUrl = "mountain_project_url"
+    }
+
+    /// Convert to Crag if this is a leaf node with coordinates
+    func toCrag(location: String) -> Crag? {
+        guard isCrag, let lat = latitude, let lon = longitude else { return nil }
+        return Crag(
+            id: id,
+            name: name,
+            location: location,
+            latitude: lat,
+            longitude: lon,
+            safetyStatus: safetyStatus ?? .unknown,
+            googleMapsUrl: googleMapsUrl,
+            mountainProjectUrl: mountainProjectUrl,
+            precipitation: nil
+        )
+    }
+}
+
+// MARK: - Area Preview Helpers
+
+extension Area {
+    static let previewState = Area(
+        id: "california-id",
+        name: "California",
+        parentId: nil,
+        hasChildren: true,
+        isCrag: false,
+        latitude: nil,
+        longitude: nil,
+        safetyStatus: nil,
+        googleMapsUrl: nil,
+        mountainProjectUrl: nil
+    )
+
+    static let previewCrag = Area(
+        id: "yosemite-id",
+        name: "Yosemite Valley",
+        parentId: "california-id",
+        hasChildren: false,
+        isCrag: true,
+        latitude: 37.7456,
+        longitude: -119.5936,
+        safetyStatus: .safe,
+        googleMapsUrl: "https://www.google.com/maps?q=37.7456,-119.5936",
+        mountainProjectUrl: "https://www.mountainproject.com/area/105833381/yosemite-valley"
+    )
+}
+
+// MARK: - Crag Model
+
 struct Crag: Identifiable, Codable, Equatable {
     let id: String
     let name: String

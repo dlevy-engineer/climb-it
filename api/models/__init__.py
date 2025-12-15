@@ -6,4 +6,6 @@ from .crag import (
     DayForecastResponse,
     ForecastResponse,
     SafetyStatusEnum,
+    AreaResponse,
+    AreaDetailResponse,
 )

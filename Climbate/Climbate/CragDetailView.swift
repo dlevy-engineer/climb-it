@@ -365,7 +365,7 @@ struct CragDetailView: View {
                     .foregroundColor(.climbCaution)
             }
 
-            Text("Conditions are variable. Check local reports and inspect the rock before committing to a route.")
+            Text("Conditions are variable. Inspect the rock before committing to a route.")
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbGranite)
 

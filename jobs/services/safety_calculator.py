@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional
 
 from config import get_settings
-from db import get_session, Crag, Precipitation, SafetyStatus
+from db import get_session, Area, Precipitation, SafetyStatus
 from clients import OpenMeteoClient
 
 
@@ -43,13 +43,14 @@ class SafetyCalculator:
         }
 
     def calculate_all(self) -> dict:
-        """Calculate and update safety status for all crags."""
+        """Calculate and update safety status for all crags (areas with coordinates)."""
         log.info("safety_calculation_starting")
 
         session = get_session()
 
         try:
-            crags = session.query(Crag).all()
+            # Only query areas with coordinates (actual crags)
+            crags = session.query(Area).filter(Area.latitude.isnot(None)).all()
             log.info("crags_to_calculate", count=len(crags))
 
             for crag in crags:
@@ -75,7 +76,7 @@ class SafetyCalculator:
         session = get_session()
 
         try:
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            crag = session.query(Area).filter(Area.id == crag_id).first()
             if not crag:
                 raise ValueError(f"Crag not found: {crag_id}")
 
@@ -89,7 +90,7 @@ class SafetyCalculator:
         finally:
             session.close()
 
-    def _calculate_for_crag(self, session, crag: Crag) -> SafetyStatus | None:
+    def _calculate_for_crag(self, session, crag: Area) -> SafetyStatus | None:
         """
         Calculate safety status based on precipitation records.
 
@@ -100,7 +101,7 @@ class SafetyCalculator:
 
         records = (
             session.query(Precipitation)
-            .filter(Precipitation.crag_id == crag.id)
+            .filter(Precipitation.area_id == crag.id)
             .filter(Precipitation.recorded_at >= cutoff)
             .order_by(Precipitation.recorded_at.desc())
             .all()
@@ -176,7 +177,7 @@ class SafetyCalculator:
         session = get_session()
 
         try:
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            crag = session.query(Area).filter(Area.id == crag_id).first()
             if not crag:
                 return {"error": "Crag not found"}
 
@@ -184,7 +185,7 @@ class SafetyCalculator:
 
             records = (
                 session.query(Precipitation)
-                .filter(Precipitation.crag_id == crag_id)
+                .filter(Precipitation.area_id == crag_id)
                 .filter(Precipitation.recorded_at >= cutoff)
                 .order_by(Precipitation.recorded_at.desc())
                 .all()
@@ -254,7 +255,7 @@ class SafetyCalculator:
         session = get_session()
 
         try:
-            crag = session.query(Crag).filter(Crag.id == crag_id).first()
+            crag = session.query(Area).filter(Area.id == crag_id).first()
             if not crag:
                 log.warning("crag_not_found", crag_id=crag_id)
                 return []
@@ -263,7 +264,7 @@ class SafetyCalculator:
             cutoff = datetime.utcnow() - timedelta(days=14)
             records = (
                 session.query(Precipitation)
-                .filter(Precipitation.crag_id == crag_id)
+                .filter(Precipitation.area_id == crag_id)
                 .filter(Precipitation.recorded_at >= cutoff)
                 .order_by(Precipitation.recorded_at.desc())
                 .all()
