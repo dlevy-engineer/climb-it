@@ -6,6 +6,7 @@ from datetime import datetime
 from collections import deque
 
 from sqlalchemy.dialects.mysql import insert
+from sqlalchemy import text
 
 from config import get_settings
 from db import get_session, Area
@@ -56,7 +57,7 @@ class CragSyncService:
         session = get_session()
         try:
             result = session.execute(
-                "SELECT url FROM ods_areas WHERE scraped_at IS NOT NULL AND scrape_failed = FALSE"
+                text("SELECT url FROM ods_areas WHERE scraped_at IS NOT NULL AND scrape_failed = FALSE")
             )
             return {row[0] for row in result.fetchall()}
         finally:
@@ -247,7 +248,7 @@ class CragSyncService:
         try:
             area_id = generate_deterministic_uuid(url)
             session.execute(
-                f"UPDATE ods_areas SET scrape_failed = TRUE WHERE id = '{area_id}'"
+                text(f"UPDATE ods_areas SET scrape_failed = TRUE WHERE id = '{area_id}'")
             )
             session.commit()
         except Exception:
@@ -262,7 +263,7 @@ class CragSyncService:
         session = get_session()
         try:
             result = session.execute(
-                "SELECT url FROM ods_areas WHERE scrape_failed = TRUE"
+                text("SELECT url FROM ods_areas WHERE scrape_failed = TRUE")
             )
             failed_urls = [row[0] for row in result.fetchall()]
         finally:
