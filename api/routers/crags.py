@@ -216,7 +216,7 @@ def get_crag(crag_id: str, db: Session = Depends(get_db)):
     return CragDetailResponse(
         id=crag.id,
         name=crag.name,
-        location=build_location_path(crag, db),
+        location=build_location_path_slow(crag, db),
         latitude=float(crag.latitude),
         longitude=float(crag.longitude),
         safety_status=crag.safety_status.value if crag.safety_status else "UNKNOWN",
