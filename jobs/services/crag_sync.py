@@ -158,11 +158,13 @@ class CragSyncService:
 
                 if area:
                     # Area has coordinates - it's a crag
+                    # Don't allow self-referential parent_id (happens when state URL is re-processed)
+                    actual_parent_id = None if area_id == parent_id else parent_id
                     self._upsert_area(
                         area_id=area_id,
                         name=area.name,
                         url=url,
-                        parent_id=parent_id,
+                        parent_id=actual_parent_id,
                         latitude=area.latitude,
                         longitude=area.longitude,
                     )
@@ -182,7 +184,8 @@ class CragSyncService:
                             latitude=None,  # Will be updated when we visit
                             longitude=None,
                         )
-                        queue.append((child_url, child_id, depth + 1))
+                        # Pass the PARENT's ID, not the child's own ID
+                        queue.append((child_url, area_id if area else parent_id, depth + 1))
 
             except Exception as e:
                 log.warning("area_failed", url=url, error=str(e))
