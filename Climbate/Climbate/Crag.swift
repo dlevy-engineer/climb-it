@@ -80,6 +80,65 @@ extension Area {
     )
 }
 
+// MARK: - Area Search Result
+
+/// Search result with breadcrumb path for context
+struct AreaSearchResult: Identifiable, Codable, Equatable {
+    let id: String
+    let name: String
+    let parentId: String?
+    let hasChildren: Bool
+    let isCrag: Bool
+    let latitude: Double?
+    let longitude: Double?
+    let safetyStatus: Crag.SafetyStatus?
+    let googleMapsUrl: String?
+    let mountainProjectUrl: String?
+    let breadcrumb: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, latitude, longitude, breadcrumb
+        case parentId = "parent_id"
+        case hasChildren = "has_children"
+        case isCrag = "is_crag"
+        case safetyStatus = "safety_status"
+        case googleMapsUrl = "google_maps_url"
+        case mountainProjectUrl = "mountain_project_url"
+    }
+
+    /// Convert to Area (without breadcrumb)
+    func toArea() -> Area {
+        Area(
+            id: id,
+            name: name,
+            parentId: parentId,
+            hasChildren: hasChildren,
+            isCrag: isCrag,
+            latitude: latitude,
+            longitude: longitude,
+            safetyStatus: safetyStatus,
+            googleMapsUrl: googleMapsUrl,
+            mountainProjectUrl: mountainProjectUrl
+        )
+    }
+
+    /// Convert to Crag if this is a leaf node with coordinates
+    func toCrag() -> Crag? {
+        guard isCrag, let lat = latitude, let lon = longitude else { return nil }
+        return Crag(
+            id: id,
+            name: name,
+            location: breadcrumb,
+            latitude: lat,
+            longitude: lon,
+            safetyStatus: safetyStatus ?? .unknown,
+            googleMapsUrl: googleMapsUrl,
+            mountainProjectUrl: mountainProjectUrl,
+            precipitation: nil
+        )
+    }
+}
+
 // MARK: - Crag Model
 
 struct Crag: Identifiable, Codable, Equatable {

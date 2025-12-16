@@ -42,6 +42,11 @@ class AreaDetailResponse(AreaResponse):
     children: list["AreaResponse"] = Field(default_factory=list)
 
 
+class AreaSearchResult(AreaResponse):
+    """Search result with breadcrumb path for context."""
+    breadcrumb: str = Field(description="Full path: California > Eastern Sierra > Bishop")
+
+
 # --- Legacy Crag Models (for backwards compatibility) ---
 
 class CragResponse(BaseModel):

@@ -12,7 +12,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from db import get_db, ODSArea, ODSAreaPrecipitation
-from models import AreaResponse, AreaDetailResponse, PrecipitationData, SafetyStatusEnum
+from models import AreaResponse, AreaDetailResponse, AreaSearchResult, PrecipitationData, SafetyStatusEnum
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/areas", tags=["areas"])
@@ -56,6 +56,69 @@ def list_areas(
         areas = db.query(ODSArea).filter(ODSArea.parent_id.is_(None)).order_by(ODSArea.name).all()
 
     return [area_to_response(a, db) for a in areas]
+
+
+def build_breadcrumb(area: ODSArea, db: Session) -> str:
+    """Build breadcrumb path like 'California > Eastern Sierra > Bishop'."""
+    path = []
+    current = area
+    while current:
+        path.append(current.name)
+        if current.parent_id:
+            current = db.query(ODSArea).filter(ODSArea.id == current.parent_id).first()
+        else:
+            current = None
+    path.reverse()
+    return " > ".join(path)
+
+
+@router.get("/search", response_model=list[AreaSearchResult])
+def search_areas(
+    q: str = Query(..., min_length=2, description="Search query"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    db: Session = Depends(get_db),
+):
+    """
+    Search areas by name across all hierarchy levels.
+
+    Returns matching areas with breadcrumb paths for context.
+    Prioritizes crags (areas with coordinates) over parent areas.
+    """
+    search_pattern = f"%{q}%"
+
+    # Search with crags (areas with coordinates) prioritized
+    areas = (
+        db.query(ODSArea)
+        .filter(ODSArea.name.ilike(search_pattern))
+        .order_by(
+            # Crags first (have coordinates)
+            (ODSArea.latitude.is_(None)).asc(),
+            ODSArea.name.asc(),
+        )
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for area in areas:
+        has_children = db.query(ODSArea).filter(ODSArea.parent_id == area.id).first() is not None
+        is_crag = area.latitude is not None and area.longitude is not None
+
+        results.append(AreaSearchResult(
+            id=area.id,
+            name=area.name,
+            parent_id=area.parent_id,
+            has_children=has_children,
+            is_crag=is_crag,
+            latitude=float(area.latitude) if area.latitude else None,
+            longitude=float(area.longitude) if area.longitude else None,
+            safety_status=area.safety_status.value if area.safety_status else None,
+            google_maps_url=area.google_maps_url,
+            mountain_project_url=area.url,
+            breadcrumb=build_breadcrumb(area, db),
+        ))
+
+    return results
 
 
 @router.get("/{area_id}", response_model=AreaDetailResponse)

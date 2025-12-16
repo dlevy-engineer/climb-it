@@ -8,4 +8,5 @@ from .crag import (
     SafetyStatusEnum,
     AreaResponse,
     AreaDetailResponse,
+    AreaSearchResult,
 )

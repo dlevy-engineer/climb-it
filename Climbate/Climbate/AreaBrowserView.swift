@@ -14,16 +14,27 @@ struct AreaBrowserView: View {
     @State private var isLoading: Bool = false
     @State private var error: String?
     @State private var searchText: String = ""
+    @State private var searchResults: [AreaSearchResult] = []
+    @State private var isSearching: Bool = false
+    @State private var searchTask: Task<Void, Never>?
 
     private let apiClient = APIClient.shared
 
-    /// Filter areas by search text (local filtering)
+    /// True when showing server search results
+    var isShowingSearchResults: Bool {
+        searchText.count >= 2
+    }
+
+    /// Filter areas by search text (local filtering for 1 char)
     var filteredAreas: [Area] {
         if searchText.isEmpty {
             return areas
         }
-        let query = searchText.lowercased()
-        return areas.filter { $0.name.lowercased().contains(query) }
+        if searchText.count == 1 {
+            let query = searchText.lowercased()
+            return areas.filter { $0.name.lowercased().contains(query) }
+        }
+        return areas
     }
 
     var body: some View {
@@ -38,10 +49,12 @@ struct AreaBrowserView: View {
                         .padding(.top, ClimbSpacing.sm)
 
                     // Content
-                    if isLoading {
+                    if isLoading && !isShowingSearchResults {
                         loadingState
-                    } else if let error = error {
+                    } else if let error = error, !isShowingSearchResults {
                         errorState(error)
+                    } else if isShowingSearchResults {
+                        searchResultsList
                     } else if areas.isEmpty {
                         emptyState
                     } else {
@@ -60,6 +73,9 @@ struct AreaBrowserView: View {
             .task {
                 await loadTopLevelAreas()
             }
+            .onChange(of: searchText) { _, newValue in
+                performSearch(query: newValue)
+            }
         }
     }
 
@@ -70,13 +86,16 @@ struct AreaBrowserView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.climbStone)
 
-            TextField("Filter areas...", text: $searchText)
+            TextField("Search all crags...", text: $searchText)
                 .font(ClimbTypography.body)
                 .foregroundColor(.climbGranite)
                 .tint(.climbRope)
                 .autocorrectionDisabled()
 
-            if !searchText.isEmpty {
+            if isSearching {
+                ProgressView()
+                    .scaleEffect(0.8)
+            } else if !searchText.isEmpty {
                 Button(action: { searchText = "" }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.climbStone)
@@ -160,6 +179,71 @@ struct AreaBrowserView: View {
             .padding(.horizontal, ClimbSpacing.md)
             .padding(.top, ClimbSpacing.sm)
             .padding(.bottom, ClimbSpacing.xxl)
+        }
+    }
+
+    private var searchResultsList: some View {
+        ScrollView {
+            LazyVStack(spacing: ClimbSpacing.sm) {
+                if searchResults.isEmpty && !isSearching {
+                    VStack(spacing: ClimbSpacing.md) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 48))
+                            .foregroundColor(.climbMist)
+
+                        Text("No results for \"\(searchText)\"")
+                            .font(ClimbTypography.body)
+                            .foregroundColor(.climbStone)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, ClimbSpacing.xxl)
+                } else {
+                    ForEach(searchResults) { result in
+                        SearchResultRow(result: result)
+                    }
+                }
+            }
+            .padding(.horizontal, ClimbSpacing.md)
+            .padding(.top, ClimbSpacing.sm)
+            .padding(.bottom, ClimbSpacing.xxl)
+        }
+    }
+
+    // MARK: - Search
+
+    private func performSearch(query: String) {
+        // Cancel any previous search
+        searchTask?.cancel()
+
+        // Clear results if query is too short
+        guard query.count >= 2 else {
+            searchResults = []
+            isSearching = false
+            return
+        }
+
+        // Debounce: wait 300ms before searching
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { isSearching = true }
+
+            do {
+                let results = try await apiClient.searchAreas(query: query)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    searchResults = results
+                    isSearching = false
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    searchResults = []
+                    isSearching = false
+                }
+            }
         }
     }
 
@@ -661,6 +745,131 @@ struct AreaChildrenView: View {
         }
 
         isLoading = false
+    }
+}
+
+// MARK: - Search Result Row
+
+struct SearchResultRow: View {
+    let result: AreaSearchResult
+    @EnvironmentObject var cragStore: CragStore
+
+    var body: some View {
+        NavigationLink {
+            if result.hasChildren {
+                AreaChildrenView(area: result.toArea(), breadcrumb: parentBreadcrumb)
+            } else if result.isCrag, let crag = result.toCrag() {
+                CragDetailView(crag: crag)
+            } else {
+                AreaChildrenView(area: result.toArea(), breadcrumb: parentBreadcrumb)
+            }
+        } label: {
+            HStack(spacing: ClimbSpacing.md) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(iconBackground)
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: iconName)
+                        .font(.system(size: 16))
+                        .foregroundColor(iconColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.name)
+                        .font(ClimbTypography.bodyBold)
+                        .foregroundColor(.climbGranite)
+                        .lineLimit(1)
+
+                    // Breadcrumb shows full path
+                    Text(result.breadcrumb)
+                        .font(ClimbTypography.caption)
+                        .foregroundColor(.climbStone)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Save button for crags
+                if isLeafCrag {
+                    Button(action: {
+                        if let crag = result.toCrag() {
+                            cragStore.toggle(crag)
+                        }
+                    }) {
+                        Image(systemName: isSaved ? "checkmark.circle.fill" : "plus.circle")
+                            .font(.title2)
+                            .foregroundColor(isSaved ? .climbSafe : .climbRope)
+                    }
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.climbStone)
+            }
+            .padding(ClimbSpacing.md)
+            .background(Color.white)
+            .cornerRadius(ClimbRadius.medium)
+            .climbSubtleShadow()
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - Computed Properties
+
+    private var isLeafCrag: Bool {
+        result.isCrag && !result.hasChildren
+    }
+
+    /// Parent breadcrumb for child navigation (everything except last component)
+    private var parentBreadcrumb: String {
+        let components = result.breadcrumb.components(separatedBy: " > ")
+        guard components.count > 1 else { return "" }
+        return components.dropLast().joined(separator: " > ")
+    }
+
+    private var iconName: String {
+        if isLeafCrag {
+            return "mountain.2.fill"
+        } else if result.isCrag && result.hasChildren {
+            return "mappin.circle.fill"
+        } else {
+            return "map.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        if isLeafCrag {
+            return statusColor
+        } else if result.isCrag {
+            return .climbSandstone
+        } else {
+            return .climbStone
+        }
+    }
+
+    private var iconBackground: Color {
+        if isLeafCrag {
+            return statusColor.opacity(0.15)
+        } else if result.isCrag {
+            return Color.climbSandstone.opacity(0.15)
+        } else {
+            return Color.climbMist
+        }
+    }
+
+    private var statusColor: Color {
+        switch result.safetyStatus {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        case .unknown, .none: return .climbUnknown
+        }
+    }
+
+    private var isSaved: Bool {
+        cragStore.savedCrags.contains { $0.id == result.id }
     }
 }
 

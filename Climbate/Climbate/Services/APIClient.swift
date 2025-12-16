@@ -133,6 +133,19 @@ class APIClient {
         return try await fetch(from: url)
     }
 
+    /// Search areas by name across all hierarchy levels
+    func searchAreas(query: String, limit: Int = 20) async throws -> [AreaSearchResult] {
+        guard query.count >= 2 else { return [] }
+
+        var components = URLComponents(url: baseURL.appendingPathComponent("areas/search"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        return try await fetch(from: components.url!)
+    }
+
     /// Health check
     func healthCheck() async throws -> Bool {
         let url = baseURL.appendingPathComponent("health")
