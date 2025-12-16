@@ -202,15 +202,25 @@ struct AreaRow: View {
             }
         } label: {
             HStack(spacing: ClimbSpacing.md) {
-                // Icon based on type - areas with children show folder, leaf crags show mountain
+                // Icon based on area type
                 ZStack {
                     Circle()
-                        .fill(isLeafCrag ? statusColor.opacity(0.15) : Color.climbMist)
+                        .fill(iconBackground)
                         .frame(width: 40, height: 40)
 
-                    Image(systemName: isLeafCrag ? "mountain.2.fill" : "folder.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(isLeafCrag ? statusColor : .climbStone)
+                    if isState, let abbrev = stateAbbreviation {
+                        // Use custom state outline image
+                        Image("state-\(abbrev)")
+                            .renderingMode(.template)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(iconColor)
+                    } else {
+                        Image(systemName: iconName)
+                            .font(.system(size: 16))
+                            .foregroundColor(iconColor)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -259,9 +269,86 @@ struct AreaRow: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    // MARK: - Area Type Detection
+
+    /// Top-level areas (states) have empty breadcrumb
+    private var isState: Bool {
+        breadcrumb.isEmpty
+    }
+
+    /// Convert state name to abbreviation for asset lookup
+    private var stateAbbreviation: String? {
+        Self.stateAbbreviations[area.name]
+    }
+
+    /// State name to abbreviation mapping
+    private static let stateAbbreviations: [String: String] = [
+        "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
+        "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE", "Florida": "FL", "Georgia": "GA",
+        "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
+        "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD",
+        "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS", "Missouri": "MO",
+        "Montana": "MT", "Nebraska": "NE", "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ",
+        "New Mexico": "NM", "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH",
+        "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+        "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT", "Vermont": "VT",
+        "Virginia": "VA", "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY",
+        "District of Columbia": "DC", "Puerto Rico": "PR"
+    ]
+
     /// A leaf crag is one that has coordinates but NO children
     private var isLeafCrag: Bool {
         area.isCrag && !area.hasChildren
+    }
+
+    /// A crag with sub-areas (like Yosemite Valley with its walls)
+    private var isCragWithChildren: Bool {
+        area.isCrag && area.hasChildren
+    }
+
+    /// A region is an area without coordinates (container only)
+    private var isRegion: Bool {
+        !area.isCrag && area.hasChildren
+    }
+
+    // MARK: - Icon Properties
+
+    private var iconName: String {
+        if isState {
+            return "globe.americas.fill"  // US state
+        } else if isLeafCrag {
+            return "mountain.2.fill"
+        } else if isCragWithChildren {
+            return "mappin.circle.fill"  // Location with sub-areas
+        } else if isRegion {
+            return "map.fill"  // Region/container
+        } else {
+            return "questionmark.circle"
+        }
+    }
+
+    private var iconColor: Color {
+        if isState {
+            return .climbRope
+        } else if isLeafCrag {
+            return statusColor
+        } else if isCragWithChildren {
+            return .climbSandstone
+        } else {
+            return .climbStone
+        }
+    }
+
+    private var iconBackground: Color {
+        if isLeafCrag {
+            return statusColor.opacity(0.15)
+        } else if isState {
+            return Color.climbRope.opacity(0.15)
+        } else if isCragWithChildren {
+            return Color.climbSandstone.opacity(0.15)
+        } else {
+            return Color.climbMist
+        }
     }
 
     private var statusColor: Color {
@@ -329,10 +416,18 @@ struct AreaChildrenView: View {
             }
         }
         .navigationTitle(area.name)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.climbChalk, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .task {
             await loadChildren()
         }
+    }
+
+    /// Whether this is a state-level view (no weather tracking makes sense)
+    private var isStateLevel: Bool {
+        breadcrumb.isEmpty
     }
 
     // MARK: - Components
@@ -430,18 +525,42 @@ struct AreaChildrenView: View {
         }
     }
 
-    /// Children list with optional weather header for areas that have coordinates
+    /// Children list with weather section for areas with coordinates
     private var childrenListWithHeader: some View {
         ScrollView {
             LazyVStack(spacing: ClimbSpacing.sm) {
-                // Show weather/safety header if this area has coordinates
-                if area.isCrag {
-                    cragInfoHeader
+                // Weather section for areas with coordinates (but NOT states - too broad)
+                // Users can track weather at any level they find useful (e.g., Yosemite Valley)
+                if area.isCrag && !isStateLevel {
+                    VStack(alignment: .leading, spacing: ClimbSpacing.sm) {
+                        // Section header
+                        Text("CONDITIONS")
+                            .font(ClimbTypography.micro)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.climbStone)
+                            .tracking(1)
+                            .padding(.horizontal, ClimbSpacing.sm)
+
+                        cragInfoHeader
+                    }
+                    .padding(.bottom, ClimbSpacing.md)
                 }
 
-                // Show children
-                ForEach(filteredChildren) { child in
-                    AreaRow(area: child, breadcrumb: childBreadcrumb)
+                // Children section with header if there are children
+                if !filteredChildren.isEmpty {
+                    VStack(alignment: .leading, spacing: ClimbSpacing.sm) {
+                        // Section header for sub-areas
+                        Text("SUB-AREAS")
+                            .font(ClimbTypography.micro)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.climbStone)
+                            .tracking(1)
+                            .padding(.horizontal, ClimbSpacing.sm)
+
+                        ForEach(filteredChildren) { child in
+                            AreaRow(area: child, breadcrumb: childBreadcrumb)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, ClimbSpacing.md)

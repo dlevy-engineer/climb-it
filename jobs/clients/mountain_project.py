@@ -218,7 +218,7 @@ class MountainProjectScraper:
                     pass
 
     def get_all_state_urls(self) -> list[tuple[str, str]]:
-        """Get all top-level area URLs from the route guide (deduplicated)."""
+        """Get all US state URLs from the route guide (filtered to actual states only)."""
         from bs4 import BeautifulSoup
 
         html = self.fetch_page(self.AREAS_URL)
@@ -227,12 +227,28 @@ class MountainProjectScraper:
         areas = []
         seen_urls = set()
 
-        # Find all area links, deduplicated
+        # Find all area links, deduplicated and filtered to US states
         for link in soup.select('a[href*="/area/"]'):
             href = link.get("href", "")
             name = link.get_text(strip=True)
 
             if not href or not name:
+                continue
+
+            # Must have area ID in URL
+            if not re.search(r'/area/\d+/', href):
+                continue
+
+            # Extract slug from URL to check if it's a US state
+            # URL format: /area/123456/state-name
+            slug_match = re.search(r'/area/\d+/([^/]+)', href)
+            if not slug_match:
+                continue
+
+            slug = slug_match.group(1).lower()
+
+            # Only include if it's a US state (using the US_STATES set)
+            if slug not in US_STATES:
                 continue
 
             # Normalize URL
@@ -242,14 +258,10 @@ class MountainProjectScraper:
             if full_url in seen_urls:
                 continue
 
-            # Must have area ID in URL
-            if not re.search(r'/area/\d+/', href):
-                continue
-
             seen_urls.add(full_url)
             areas.append((name, full_url))
 
-        log.info("top_level_areas_found", count=len(areas))
+        log.info("us_states_found", count=len(areas))
         return areas
 
     def get_area_with_children(self, area_url: str) -> tuple[Optional[MPArea], list[MPArea]]:

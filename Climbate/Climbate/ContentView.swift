@@ -13,7 +13,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView()
+            HomeView(selectedTab: $selectedTab)
                 .tabItem {
                     Image(systemName: selectedTab == 0 ? "mountain.2.fill" : "mountain.2")
                     Text("My Crags")

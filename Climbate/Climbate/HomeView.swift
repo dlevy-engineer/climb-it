@@ -9,7 +9,7 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var cragStore: CragStore
-    @State private var showingSearchView = false
+    @Binding var selectedTab: Int
     @State private var isRefreshing = false
 
     /// Groups crags by state, sorted alphabetically by state name, then crag name
@@ -40,16 +40,13 @@ struct HomeView: View {
                     ClimbLogo(size: .small)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingSearchView.toggle() }) {
+                    Button(action: { selectedTab = 1 }) {
                         Image(systemName: "plus")
                             .font(.title3)
                             .fontWeight(.medium)
                             .foregroundColor(.climbRope)
                     }
                 }
-            }
-            .sheet(isPresented: $showingSearchView) {
-                SearchView()
             }
             .toolbarBackground(Color.climbChalk, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -93,7 +90,7 @@ struct HomeView: View {
             }
 
             ClimbButton("Find Crags", icon: "magnifyingglass") {
-                showingSearchView.toggle()
+                selectedTab = 1
             }
             .padding(.horizontal, ClimbSpacing.xxl)
 
@@ -386,11 +383,11 @@ struct CragRowView: View {
         Crag(name: "Bishop", location: "California > Eastern Sierra", safetyStatus: .safe),
         Crag(name: "Joshua Tree", location: "California > High Desert", safetyStatus: .caution)
     ]
-    return HomeView()
+    return HomeView(selectedTab: .constant(0))
         .environmentObject(store)
 }
 
 #Preview("Empty State") {
-    HomeView()
+    HomeView(selectedTab: .constant(0))
         .environmentObject(CragStore())
 }
