@@ -182,7 +182,10 @@ def clear_crags():
         count = session.execute(text('SELECT COUNT(*) FROM ods_areas')).scalar()
         log.info("current_area_count", count=count)
 
-        # Clear all dependent tables first (foreign key constraints)
+        # Disable FK checks for self-referential table
+        session.execute(text('SET FOREIGN_KEY_CHECKS=0'))
+
+        # Clear all dependent tables first
         dependent_tables = ['ods_precipitation']
         for table in dependent_tables:
             try:
@@ -193,6 +196,9 @@ def clear_crags():
 
         # Then clear areas
         session.execute(text('DELETE FROM ods_areas'))
+
+        # Re-enable FK checks
+        session.execute(text('SET FOREIGN_KEY_CHECKS=1'))
         session.commit()
         log.info("cleared_all_areas")
 
