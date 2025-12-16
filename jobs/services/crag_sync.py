@@ -9,7 +9,7 @@ from sqlalchemy.dialects.mysql import insert
 from sqlalchemy import text
 
 from config import get_settings
-from db import get_session, Area
+from db import get_session, Area, SafetyStatus
 from clients import MountainProjectScraper
 
 log = structlog.get_logger()
@@ -216,7 +216,7 @@ class CragSyncService:
 
             # Only set safety_status if this is a crag (has coordinates)
             if latitude is not None and longitude is not None:
-                record["safety_status"] = "UNKNOWN"
+                record["safety_status"] = SafetyStatus.UNKNOWN
 
             stmt = insert(Area).values(**record)
             upsert_stmt = stmt.on_duplicate_key_update(
@@ -232,12 +232,12 @@ class CragSyncService:
             session.commit()
             self.stats["areas_upserted"] += 1
 
-            log.debug("area_upserted", name=name, url=url, has_coords=latitude is not None)
+            log.info("area_upserted", name=name, url=url, has_coords=latitude is not None, parent_id=parent_id)
             return True
 
         except Exception as e:
             session.rollback()
-            log.error("area_upsert_failed", url=url, error=str(e))
+            log.error("area_upsert_failed", url=url, error=str(e), error_type=type(e).__name__)
             return False
         finally:
             session.close()
