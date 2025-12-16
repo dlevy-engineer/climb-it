@@ -54,18 +54,23 @@ class CragStore: ObservableObject {
     // MARK: - API Fetching
 
     func fetchAllCrags() async -> [Crag] {
+        print("🔍 CragStore.fetchAllCrags() - START")
         isLoading = true
         error = nil
 
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            print("🔍 CragStore.fetchAllCrags() - DEFER (isLoading=false)")
+        }
 
         do {
+            print("🔍 CragStore.fetchAllCrags() - Calling apiClient.fetchAllCrags()...")
             let crags = try await apiClient.fetchAllCrags()
-            print("Fetched \(crags.count) total crags")
+            print("✅ CragStore.fetchAllCrags() - SUCCESS: Fetched \(crags.count) total crags")
             return crags
         } catch {
             self.error = error.localizedDescription
-            print("Error fetching crags: \(error)")
+            print("❌ CragStore.fetchAllCrags() - ERROR: \(error)")
             return []
         }
     }

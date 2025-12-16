@@ -26,7 +26,7 @@ class APIClient {
         #endif
 
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForRequest = 120  // Increased for large queries
         self.session = URLSession(configuration: config)
 
         self.decoder = JSONDecoder()
@@ -47,16 +47,20 @@ class APIClient {
 
     /// Fetch ALL crags by paginating through all pages
     func fetchAllCrags() async throws -> [Crag] {
+        print("🌐 APIClient.fetchAllCrags() - START")
         var allCrags: [Crag] = []
         var page = 1
         let perPage = 500
 
         while true {
+            print("🌐 APIClient.fetchAllCrags() - Fetching page \(page)...")
             let crags = try await fetchCrags(page: page, perPage: perPage)
+            print("🌐 APIClient.fetchAllCrags() - Page \(page) returned \(crags.count) crags")
             allCrags.append(contentsOf: crags)
 
             // If we got fewer results than requested, we've reached the end
             if crags.count < perPage {
+                print("🌐 APIClient.fetchAllCrags() - Done, total: \(allCrags.count)")
                 break
             }
             page += 1

@@ -25,8 +25,8 @@ from models import (
 router = APIRouter(prefix="/crags", tags=["crags"])
 
 
-def build_location_path(area: ODSArea, db: Session) -> str:
-    """Build location string by walking up the parent hierarchy."""
+def build_location_path_slow(area: ODSArea, db: Session) -> str:
+    """Build location string by walking up the parent hierarchy (N+1 queries - slow!)."""
     parts = []
     current = area
 
@@ -45,12 +45,44 @@ def build_location_path(area: ODSArea, db: Session) -> str:
     return parts[0] if parts else "Unknown"
 
 
-def crag_to_response(crag: ODSArea, db: Session) -> CragResponse:
+def build_area_lookup(db: Session) -> dict[str, ODSArea]:
+    """Pre-load all areas into a lookup dict to avoid N+1 queries."""
+    all_areas = db.query(ODSArea).all()
+    return {area.id: area for area in all_areas}
+
+
+def build_location_path_fast(area: ODSArea, area_lookup: dict[str, ODSArea]) -> str:
+    """Build location string using pre-loaded area lookup (fast!)."""
+    parts = []
+    current = area
+
+    # Walk up the tree using the lookup dict
+    while current:
+        parts.append(current.name)
+        if current.parent_id and current.parent_id in area_lookup:
+            current = area_lookup[current.parent_id]
+        else:
+            current = None
+
+    # Reverse to get root-to-leaf order, skip the crag itself
+    parts.reverse()
+    if len(parts) > 1:
+        return " > ".join(parts[:-1])  # All except the last (crag name)
+    return parts[0] if parts else "Unknown"
+
+
+def crag_to_response(crag: ODSArea, db: Session, area_lookup: dict[str, ODSArea] = None) -> CragResponse:
     """Convert ORM model to Pydantic response."""
+    # Use fast path if lookup is provided, otherwise fall back to slow path
+    if area_lookup:
+        location = build_location_path_fast(crag, area_lookup)
+    else:
+        location = build_location_path_slow(crag, db)
+
     return CragResponse(
         id=crag.id,
         name=crag.name,
-        location=build_location_path(crag, db),
+        location=location,
         latitude=float(crag.latitude),
         longitude=float(crag.longitude),
         safety_status=crag.safety_status.value if crag.safety_status else "UNKNOWN",
@@ -68,6 +100,9 @@ def list_crags(
     """List all crags (areas with coordinates) with pagination."""
     offset = (page - 1) * per_page
 
+    # Pre-load all areas to avoid N+1 queries when building location paths
+    area_lookup = build_area_lookup(db)
+
     # Only return areas that have coordinates (actual crags)
     crags = (
         db.query(ODSArea)
@@ -78,7 +113,7 @@ def list_crags(
         .all()
     )
 
-    return [crag_to_response(c, db) for c in crags]
+    return [crag_to_response(c, db, area_lookup) for c in crags]
 
 
 @router.get("/search", response_model=list[CragResponse])

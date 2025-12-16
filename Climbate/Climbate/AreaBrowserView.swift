@@ -188,26 +188,29 @@ struct AreaRow: View {
 
     var body: some View {
         NavigationLink {
-            if area.isCrag {
-                // This is a crag - go to detail view
+            if area.hasChildren {
+                // This area has children - show sub-areas first
+                AreaChildrenView(area: area, breadcrumb: breadcrumb)
+            } else if area.isCrag {
+                // This is a leaf crag - go to detail view
                 if let crag = area.toCrag(location: breadcrumb) {
                     CragDetailView(crag: crag)
                 }
             } else {
-                // This is a region - show children
+                // Fallback - show children view (will show empty state)
                 AreaChildrenView(area: area, breadcrumb: breadcrumb)
             }
         } label: {
             HStack(spacing: ClimbSpacing.md) {
-                // Icon based on type
+                // Icon based on type - areas with children show folder, leaf crags show mountain
                 ZStack {
                     Circle()
-                        .fill(area.isCrag ? statusColor.opacity(0.15) : Color.climbMist)
+                        .fill(isLeafCrag ? statusColor.opacity(0.15) : Color.climbMist)
                         .frame(width: 40, height: 40)
 
-                    Image(systemName: area.isCrag ? "mountain.2.fill" : "folder.fill")
+                    Image(systemName: isLeafCrag ? "mountain.2.fill" : "folder.fill")
                         .font(.system(size: 16))
-                        .foregroundColor(area.isCrag ? statusColor : .climbStone)
+                        .foregroundColor(isLeafCrag ? statusColor : .climbStone)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -216,7 +219,7 @@ struct AreaRow: View {
                         .foregroundColor(.climbGranite)
                         .lineLimit(1)
 
-                    if area.isCrag {
+                    if isLeafCrag {
                         if let status = area.safetyStatus {
                             Text(status.displayName)
                                 .font(ClimbTypography.caption)
@@ -231,8 +234,8 @@ struct AreaRow: View {
 
                 Spacer()
 
-                // Action button for crags, chevron for folders
-                if area.isCrag {
+                // Action button for leaf crags, chevron for areas with children
+                if isLeafCrag {
                     Button(action: {
                         if let crag = area.toCrag(location: breadcrumb) {
                             cragStore.toggle(crag)
@@ -254,6 +257,11 @@ struct AreaRow: View {
             .climbSubtleShadow()
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    /// A leaf crag is one that has coordinates but NO children
+    private var isLeafCrag: Bool {
+        area.isCrag && !area.hasChildren
     }
 
     private var statusColor: Color {
@@ -313,10 +321,10 @@ struct AreaChildrenView: View {
                     loadingState
                 } else if let error = error {
                     errorState(error)
-                } else if children.isEmpty {
+                } else if children.isEmpty && !area.isCrag {
                     emptyState
                 } else {
-                    childrenList
+                    childrenListWithHeader
                 }
             }
         }
@@ -420,6 +428,105 @@ struct AreaChildrenView: View {
             .padding(.top, ClimbSpacing.sm)
             .padding(.bottom, ClimbSpacing.xxl)
         }
+    }
+
+    /// Children list with optional weather header for areas that have coordinates
+    private var childrenListWithHeader: some View {
+        ScrollView {
+            LazyVStack(spacing: ClimbSpacing.sm) {
+                // Show weather/safety header if this area has coordinates
+                if area.isCrag {
+                    cragInfoHeader
+                }
+
+                // Show children
+                ForEach(filteredChildren) { child in
+                    AreaRow(area: child, breadcrumb: childBreadcrumb)
+                }
+            }
+            .padding(.horizontal, ClimbSpacing.md)
+            .padding(.top, ClimbSpacing.sm)
+            .padding(.bottom, ClimbSpacing.xxl)
+        }
+    }
+
+    /// Header card showing weather/safety info with link to detail view
+    private var cragInfoHeader: some View {
+        NavigationLink {
+            if let crag = area.toCrag(location: breadcrumb) {
+                CragDetailView(crag: crag)
+            }
+        } label: {
+            HStack(spacing: ClimbSpacing.md) {
+                // Weather icon
+                ZStack {
+                    Circle()
+                        .fill(headerStatusColor.opacity(0.15))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: "cloud.sun.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(headerStatusColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Weather & Safety")
+                        .font(ClimbTypography.bodyBold)
+                        .foregroundColor(.climbGranite)
+
+                    if let status = area.safetyStatus {
+                        Text(status.displayName)
+                            .font(ClimbTypography.caption)
+                            .foregroundColor(headerStatusColor)
+                    } else {
+                        Text("View conditions for this area")
+                            .font(ClimbTypography.caption)
+                            .foregroundColor(.climbStone)
+                    }
+                }
+
+                Spacer()
+
+                // Save button
+                Button(action: {
+                    if let crag = area.toCrag(location: breadcrumb) {
+                        cragStore.toggle(crag)
+                    }
+                }) {
+                    Image(systemName: isAreaSaved ? "checkmark.circle.fill" : "plus.circle")
+                        .font(.title2)
+                        .foregroundColor(isAreaSaved ? .climbSafe : .climbRope)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.climbStone)
+            }
+            .padding(ClimbSpacing.md)
+            .background(
+                LinearGradient(
+                    colors: [headerStatusColor.opacity(0.1), Color.white],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(ClimbRadius.medium)
+            .climbSubtleShadow()
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var headerStatusColor: Color {
+        switch area.safetyStatus {
+        case .safe: return .climbSafe
+        case .caution: return .climbCaution
+        case .unsafe: return .climbUnsafe
+        case .unknown, .none: return .climbUnknown
+        }
+    }
+
+    private var isAreaSaved: Bool {
+        cragStore.savedCrags.contains { $0.id == area.id }
     }
 
     // MARK: - Data Loading
